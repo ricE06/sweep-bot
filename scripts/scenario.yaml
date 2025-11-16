@@ -13,6 +13,9 @@ directives:
 - add_weld:
     parent: world
     child: iiwa::iiwa_link_0
+    X_PC:
+      translation: [0, 1, 0.0]   # offset robot (hole is at origin)
+      rotation: !Rpy { deg: [0, 0, 0] }
 # gripper
 - add_model:
     name: wsg
@@ -25,13 +28,13 @@ directives:
         rotation: !Rpy { deg: [90, 0, 90]}
 - add_model:
     name: table
-    file: file://models/table.sdf  # we fill in the cwd while loading
+    file: file://models/table_with_hole.sdf  # we fill in the cwd while loading
 - add_weld:
     parent: world
-    child: table::table_link
+    child: table::hole_floor
     X_PC:
-        translation: [0.0, 0.0, -0.05]
-        rotation: !Rpy { deg: [0, 0, -90] }
+        translation: [0.0, 0.0, -0.5]
+        rotation: !Rpy { deg: [0, 0, 0] }
 - add_model:
     name: broom
     file: file://models/broom.sdf

@@ -7,20 +7,20 @@
       <visual name="handle_visual">
         <geometry>
           <cylinder>
-            <radius>0.03</radius>
-            <length>0.75</length>
+            <radius>0.025</radius>
+            <length>0.8</length>
           </cylinder>
         </geometry>
-        <pose>0 0 0.4 0 0 0</pose>
+        <pose>0  0.2 0.35 -0.5236 0 0</pose>
       </visual>
       <collision name="handle_collision">
         <geometry>
           <cylinder>
-            <radius>0.03</radius>
+            <radius>0.025</radius>
             <length>0.75</length>
           </cylinder>
         </geometry>
-        <pose>0 0 0.4 0 0 0</pose>
+        <pose>0  -0.2 0.35 0.5236 0 0</pose>
       </collision>
     </link>
 
@@ -29,18 +29,18 @@
       <visual name="base_visual">
         <geometry>
           <box>
-            <size>0.3 0.1 0.05</size>
+            <size>0.3 0.15 0.05</size>
           </box>
         </geometry>
       </visual>
       <collision name="base_collision">
         <geometry>
           <box>
-            <size>0.3 0.1 0.05</size>
+            <size>0.3 0.15 0.05</size>
           </box>
         </geometry>
       </collision>
-      <pose>0 0 0.01 0 0 0</pose>
+      <pose>0 0 0 0 0 0</pose>
     </link>
 
     <joint name="handle_to_base" type="fixed">
