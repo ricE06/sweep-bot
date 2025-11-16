@@ -40,5 +40,5 @@ directives:
     file: file://models/broom.sdf
     default_free_body_pose:
         handle_link:
-            translation: [0.6, 0, 0.05]
+            translation: [0.6, 0, 0.0]
             rotation: !Rpy { deg: [0, 0, 0] }

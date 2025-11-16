@@ -12,7 +12,7 @@ def add_cubes(n, x_lower, x_upper, y_lower, y_upper):
     for i in range(n):
         x = random.uniform(x_lower, x_upper)
         y = random.uniform(y_lower, y_upper)
-        z = 0.025
+        z = 0
 
         cube_directives += f"""
 - add_model:
