@@ -1,5 +1,29 @@
 from manipulation.station import LoadScenario
 from pathlib import Path
+import random
+
+def add_cubes(n, x_lower, x_upper, y_lower, y_upper):
+    """
+    Returns section of directives adding n small
+    5 cm cubes within the given bounds
+    """
+    cube_directives = ""
+
+    for i in range(n):
+        x = random.uniform(x_lower, x_upper)
+        y = random.uniform(y_lower, y_upper)
+        z = 0.025
+
+        cube_directives += f"""
+- add_model:
+    name: cube_{i}
+    file: file://models/cube.sdf
+    default_free_body_pose:
+        cube_link:
+            translation: [{x}, {y}, {z}]
+            rotation: !Rpy {{ deg: [0, 0, 0] }}
+"""
+    return cube_directives
 
 def load_scenario():
     """
@@ -15,6 +39,7 @@ def load_scenario():
     """
     with open('./scripts/scenario.yaml', 'r') as f:
         scenario_string = f.read()
+    scenario_string += add_cubes(10, -1, -0.5, 0.5, 1)
     # put in cwd
     scenario_string = scenario_string.replace('file://', f'file://{Path.cwd()}/')
     scenario = LoadScenario(data=scenario_string)

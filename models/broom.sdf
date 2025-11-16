@@ -40,7 +40,7 @@
           </box>
         </geometry>
       </collision>
-      <pose>0 0 0 0 0 0</pose>
+      <pose>0 0 0.025 0 0 0</pose>
     </link>
 
     <joint name="handle_to_base" type="fixed">
