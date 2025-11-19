@@ -97,5 +97,25 @@
       </collision>
     </link>
 
+    <joint name="joint_left" type="fixed">
+      <parent>hole_floor</parent>
+      <child>table_left</child>
+    </joint>
+
+    <joint name="joint_right" type="fixed">
+      <parent>hole_floor</parent>
+      <child>table_right</child>
+    </joint>
+
+    <joint name="joint_top" type="fixed">
+      <parent>hole_floor</parent>
+      <child>table_top</child>
+    </joint>
+
+    <joint name="joint_bottom" type="fixed">
+      <parent>hole_floor</parent>
+      <child>table_bottom</child>
+    </joint>
+
   </model>
 </sdf>

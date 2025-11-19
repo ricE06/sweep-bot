@@ -12,7 +12,7 @@ def add_cubes(n, x_lower, x_upper, y_lower, y_upper):
     for i in range(n):
         x = random.uniform(x_lower, x_upper)
         y = random.uniform(y_lower, y_upper)
-        z = 0
+        z = i / 30 # avoid cubes overlapping
 
         cube_directives += f"""
 - add_model:
@@ -41,7 +41,7 @@ def load_scenario():
         scenario_string = f.read()
     with open('./scripts/camera.yaml', 'r') as f:
         camera_string = f.read()
-    scenario_string += add_cubes(10, -1, -0.5, 0.5, 1)
+    scenario_string += add_cubes(20, -1, +1, 0.5, 1)
     scenario_string += '\n' + camera_string
     # put in cwd
     scenario_string = scenario_string.replace('file://', f'file://{Path.cwd()}/')
