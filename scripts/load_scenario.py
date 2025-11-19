@@ -39,8 +39,12 @@ def load_scenario():
     """
     with open('./scripts/scenario.yaml', 'r') as f:
         scenario_string = f.read()
+    with open('./scripts/camera.yaml', 'r') as f:
+        camera_string = f.read()
     scenario_string += add_cubes(10, -1, -0.5, 0.5, 1)
+    scenario_string += '\n' + camera_string
     # put in cwd
     scenario_string = scenario_string.replace('file://', f'file://{Path.cwd()}/')
+    print(scenario_string)
     scenario = LoadScenario(data=scenario_string)
     return scenario
