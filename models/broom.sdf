@@ -20,7 +20,7 @@
             <length>0.75</length>
           </cylinder>
         </geometry>
-        <pose>0  -0.2 0.35 0.5236 0 0</pose>
+        <pose>0  0.2 0.35 -0.5236 0 0</pose>
       </collision>
     </link>
 

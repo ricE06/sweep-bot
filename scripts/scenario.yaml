@@ -33,7 +33,7 @@ directives:
     parent: world
     child: table::hole_floor
     X_PC:
-        translation: [0.0, 0.0, -0.5]
+        translation: [0.0, 0.0, -0.55]
         rotation: !Rpy { deg: [0, 0, 0] }
 - add_model:
     name: broom
