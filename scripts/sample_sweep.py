@@ -19,11 +19,11 @@ class SweepGenerator:
     dist_tolerance = 1
     num_segments = 5
 
-    def __init__(self, 
-                 block_locations: set[tuple[float, float]], 
-                 num_pieces: float, 
+    def __init__(self,
+                 block_locations: set[tuple[float, float]],
+                 num_pieces: float,
                  target: tuple[float, float],
-                 reachable_min: tuple[float, float], 
+                 reachable_min: tuple[float, float],
                  reachable_max: tuple[float, float],
                  startable_min: tuple[float, float],
                  startable_max: tuple[float, float]):
@@ -39,7 +39,15 @@ class SweepGenerator:
         return (x, y)
 
     def _sample_in_reachable(self, start_point, start_angle):
-        pass
+        r = random.uniform(0.1, 0.4)
+        angle = start_angle + random.uniform(-0.4, 0.4)
+        x = start_point[0] + r * math.cos(angle)
+        y = start_point[1] + r * math.sin(angle)
+        # clamp inside reachable bounds
+        x = max(self.reachable_x[0], min(x, self.reachable_x[1]))
+        y = max(self.reachable_y[0], min(y, self.reachable_y[1]))
+        return (x,y)
+
 
     def _generate_sweep_sampling(self):
         # one segment sweep
@@ -72,6 +80,5 @@ class SweepGenerator:
             if best_score is None or score < best_score:
                 best_score = score
                 best_traj = traj
-            
-        return best_traj
 
+        return best_traj
