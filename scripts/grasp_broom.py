@@ -7,9 +7,12 @@ from pydrake.all import (
     Parser,
     KinematicTrajectoryOptimization,
     PositionConstraint,
+    MeshcatVisualizer,
+    MeshcatVisualizerParams,
     MinimumDistanceLowerBoundConstraint,
     Solve,
     PiecewisePolynomial,
+    Role,
     RollPitchYaw,
     FixedOffsetFrame,
     OrientationConstraint,
@@ -21,14 +24,7 @@ from pydrake.all import (
 from manipulation.scenarios import AddIiwa, AddWsg
 
 
-
-def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> PiecewisePolynomial:
-    """
-    Returns joint space trajectory for grasping broom, avoiding collisions between
-    iiwa, table, and broom (no gripper or cameras yet)
-
-    """
-
+def build_temp_plant(q0 = None, meshcat = None):
     # BUILD NEW PLANT WITH EVERYTHING WELDED
     builder = DiagramBuilder()
     plant, scene_graph = AddMultibodyPlantSceneGraph(builder, time_step=0.001)
@@ -64,14 +60,16 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     )
 
     # Add broom
-    broom = parser.AddModels("./models/broom.sdf")[0]
+    # broom = parser.AddModels("./models/broom.sdf")[0]
 
+    """
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("base_link", broom),
         RigidTransform([0.6, 1.2, 0.025])
     )
-
+    """
+    
     # Define gripper frame
     # X_gripper = RigidTransform(
     #     RotationMatrix(RollPitchYaw(np.deg2rad(90), 0, np.deg2rad(90))),
@@ -86,6 +84,16 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     #     ))
     gripper_frame = plant.GetFrameByName("body", wsg)
 
+    # visualize
+    if meshcat:
+        visualizer = MeshcatVisualizer.AddToBuilder(
+            builder,
+            scene_graph,
+            meshcat,
+            MeshcatVisualizerParams(role=Role.kIllustration),
+        )
+
+
     # Finalize plant
     plant.Finalize()
     diagram = builder.Build()
@@ -94,6 +102,20 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     if q0 is None:
         q0 = plant.GetPositions(plant_context)
     # plant.SetPositions(plant_context, iiwa, q0)
+
+    return diagram, plant
+
+
+def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> PiecewisePolynomial:
+    """
+    Returns joint space trajectory for grasping broom, avoiding collisions between
+    iiwa, table, and broom (no gripper or cameras yet)
+
+    """
+    diagram, plant = build_temp_plant(q0)
+    diagram_context = diagram.CreateDefaultContext()
+    plant_context = plant.GetMyContextFromRoot(diagram_context)
+
 
     # ----------------------------------------------------------------------
     # Trajectory optimization
@@ -207,3 +229,5 @@ def combine_trajectory(first_trajectory, second_trajectory):
 
     # final_trajectory = CompositeTrajectory([first_path_scaled, second_path_scaled])
     return CompositeTrajectory.AlignAndConcatenate([first_trajectory, second_trajectory])
+
+
