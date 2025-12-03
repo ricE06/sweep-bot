@@ -23,6 +23,7 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform) -> PiecewisePol
     Returns joint space trajectory for grasping broom, avoiding collisions between
     iiwa, table, and broom (no gripper or cameras yet)
 
+
     """
 
     # BUILD NEW PLANT WITH EVERYTHING WELDED

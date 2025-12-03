@@ -45,6 +45,6 @@ def load_scenario():
     scenario_string += '\n' + camera_string
     # put in cwd
     scenario_string = scenario_string.replace('file://', f'file://{Path.cwd()}/')
-    print(scenario_string)
+    # print(scenario_string)
     scenario = LoadScenario(data=scenario_string)
     return scenario
