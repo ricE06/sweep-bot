@@ -13,16 +13,19 @@ from pydrake.all import (
     RollPitchYaw,
     FixedOffsetFrame,
     OrientationConstraint,
+    PathParameterizedTrajectory,
+    CompositeTrajectory,
+    BsplineTrajectory
 
 )
+from manipulation.scenarios import AddIiwa, AddWsg
 
 
 
-def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform) -> PiecewisePolynomial:
+def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> PiecewisePolynomial:
     """
     Returns joint space trajectory for grasping broom, avoiding collisions between
     iiwa, table, and broom (no gripper or cameras yet)
-
 
     """
 
@@ -32,14 +35,24 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform) -> PiecewisePol
     parser = Parser(plant)
 
     # Add iiwa
-    iiwa = parser.AddModelsFromUrl(
-        "package://drake_models/iiwa_description/urdf/iiwa14_primitive_collision.urdf")[0]
+    # iiwa = parser.AddModelsFromUrl(
+    #     "package://drake_models/iiwa_description/urdf/iiwa14_primitive_collision.urdf")[0]
+    iiwa = AddIiwa(plant, collision_model="with_box_collision")
+
+    joint_name = 'world_welds_to_iiwa_link_0'
+    if plant.HasJointNamed(joint_name):
+        joint = plant.GetJointByName(joint_name)
+        plant.RemoveJoint(joint)
+    else:
+        print(f"Joint '{joint_name}' not found.")
 
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("iiwa_link_0", iiwa),
         RigidTransform([0, 1.5, 0.0])
     )
+
+    wsg = AddWsg(plant, iiwa, welded=True, sphere=True)
 
     # Add table
     table = parser.AddModels("./models/table_with_hole.sdf")[0]
@@ -60,37 +73,44 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform) -> PiecewisePol
     )
 
     # Define gripper frame
-    X_gripper = RigidTransform(
-        RotationMatrix(RollPitchYaw(np.deg2rad(90), 0, np.deg2rad(90))),
-        [0, 0, 0.09]
-    )
+    # X_gripper = RigidTransform(
+    #     RotationMatrix(RollPitchYaw(np.deg2rad(90), 0, np.deg2rad(90))),
+    #     [0, 0, 0.09]
+    # )
 
-    gripper_frame = plant.AddFrame(
-        FixedOffsetFrame(
-            "gripper_frame",
-            plant.GetFrameByName("iiwa_link_7", iiwa),
-            X_gripper
-        ))
+    # gripper_frame = plant.AddFrame(
+    #     FixedOffsetFrame(
+    #         "gripper_frame",
+    #         plant.GetFrameByName("iiwa_link_7", iiwa),
+    #         X_gripper
+    #     ))
+    gripper_frame = plant.GetFrameByName("body", wsg)
 
     # Finalize plant
     plant.Finalize()
     diagram = builder.Build()
     diagram_context = diagram.CreateDefaultContext()
     plant_context = plant.GetMyContextFromRoot(diagram_context)
+    if q0 is None:
+        q0 = plant.GetPositions(plant_context)
+    # plant.SetPositions(plant_context, iiwa, q0)
 
     # ----------------------------------------------------------------------
     # Trajectory optimization
     nq = plant.num_positions()
     print(nq)
 
-    q0 = plant.GetPositions(plant_context)
-
     trajopt = KinematicTrajectoryOptimization(nq, 10)
     prog = trajopt.get_mutable_prog()
 
+    q_guess = np.tile(q0.reshape((7, 1)), (1, trajopt.num_control_points()))
+    q_guess[0, :] = np.linspace(0, -np.pi / 2, trajopt.num_control_points())
+    path_guess = BsplineTrajectory(trajopt.basis(), q_guess)
+    trajopt.SetInitialGuess(path_guess)
+
     trajopt.AddDurationCost(1.0)
     trajopt.AddPathLengthCost(1.0)
-    trajopt.AddDurationConstraint(0.3, 4.0)
+    trajopt.AddDurationConstraint(0.1, 3.5)
 
     trajopt.AddPositionBounds(
         plant.GetPositionLowerLimits(),
@@ -152,11 +172,11 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform) -> PiecewisePol
     # ----------------------------------------------------------------
     # Solve without constraints first
 
-    result = Solve(prog)
-    if not result.is_success():
-        raise RuntimeError("Initial optimization failed")
+    # result = Solve(prog)
+    # if not result.is_success():
+    #     raise RuntimeError("Initial optimization failed")
 
-    trajopt.SetInitialGuess(trajopt.ReconstructTrajectory(result))
+    # trajopt.SetInitialGuess(trajopt.ReconstructTrajectory(result))
 
     # ------------------------------------------------------------
     # Solve with collision constraint
@@ -169,3 +189,21 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform) -> PiecewisePol
         print("Collision optimization failed")
 
     return trajopt.ReconstructTrajectory(result)
+
+def combine_trajectory(first_trajectory, second_trajectory):
+    # first_path_time_breaks = [first_trajectory.start_time(), first_trajectory.end_time()]
+    # first_path_time_samples = [[[0]], [[1]]]
+    # first_time_scale = PiecewisePolynomial.FirstOrderHold(first_path_time_breaks, first_path_time_samples)
+
+    # second_path_time_breaks = [
+    #         first_trajectory.end_time(),
+    #         first_trajectory.end_time() + second_trajectory.end_time()
+    #     ]
+    # second_path_time_samples = [[[0]], [[1]]]
+    # second_time_scale = PiecewisePolynomial.FirstOrderHold(second_path_time_breaks, second_path_time_samples)
+
+    # first_path_scaled = PathParameterizedTrajectory(first_trajectory, first_time_scale)
+    # second_path_scaled = PathParameterizedTrajectory(second_trajectory, second_time_scale)
+
+    # final_trajectory = CompositeTrajectory([first_path_scaled, second_path_scaled])
+    return CompositeTrajectory.AlignAndConcatenate([first_trajectory, second_trajectory])
