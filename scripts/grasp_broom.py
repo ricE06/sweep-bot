@@ -69,19 +69,7 @@ def build_temp_plant(q0 = None, meshcat = None):
         RigidTransform([0.6, 1.2, 0.025])
     )
     """
-    
-    # Define gripper frame
-    # X_gripper = RigidTransform(
-    #     RotationMatrix(RollPitchYaw(np.deg2rad(90), 0, np.deg2rad(90))),
-    #     [0, 0, 0.09]
-    # )
 
-    # gripper_frame = plant.AddFrame(
-    #     FixedOffsetFrame(
-    #         "gripper_frame",
-    #         plant.GetFrameByName("iiwa_link_7", iiwa),
-    #         X_gripper
-    #     ))
     gripper_frame = plant.GetFrameByName("body", wsg)
 
     # visualize
@@ -103,7 +91,7 @@ def build_temp_plant(q0 = None, meshcat = None):
         q0 = plant.GetPositions(plant_context)
     # plant.SetPositions(plant_context, iiwa, q0)
 
-    return diagram, plant
+    return diagram, plant, gripper_frame
 
 
 def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> PiecewisePolynomial:
@@ -112,9 +100,14 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     iiwa, table, and broom (no gripper or cameras yet)
 
     """
-    diagram, plant = build_temp_plant(q0)
+
+    diagram, plant, gripper_frame = build_temp_plant(q0)
+    print(plant)
     diagram_context = diagram.CreateDefaultContext()
     plant_context = plant.GetMyContextFromRoot(diagram_context)
+
+    if q0 is None:
+        q0 = plant.GetPositions(plant_context)
 
 
     # ----------------------------------------------------------------------
@@ -213,21 +206,4 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     return trajopt.ReconstructTrajectory(result)
 
 def combine_trajectory(first_trajectory, second_trajectory):
-    # first_path_time_breaks = [first_trajectory.start_time(), first_trajectory.end_time()]
-    # first_path_time_samples = [[[0]], [[1]]]
-    # first_time_scale = PiecewisePolynomial.FirstOrderHold(first_path_time_breaks, first_path_time_samples)
-
-    # second_path_time_breaks = [
-    #         first_trajectory.end_time(),
-    #         first_trajectory.end_time() + second_trajectory.end_time()
-    #     ]
-    # second_path_time_samples = [[[0]], [[1]]]
-    # second_time_scale = PiecewisePolynomial.FirstOrderHold(second_path_time_breaks, second_path_time_samples)
-
-    # first_path_scaled = PathParameterizedTrajectory(first_trajectory, first_time_scale)
-    # second_path_scaled = PathParameterizedTrajectory(second_trajectory, second_time_scale)
-
-    # final_trajectory = CompositeTrajectory([first_path_scaled, second_path_scaled])
     return CompositeTrajectory.AlignAndConcatenate([first_trajectory, second_trajectory])
-
-
