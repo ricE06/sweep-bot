@@ -1,5 +1,6 @@
 # basically copied from pset 5 oops
 # ik solver to go from a gripper target to poses
+import numpy as np
 from pydrake.all import (
     MultibodyPlant,
     RigidTransform,
