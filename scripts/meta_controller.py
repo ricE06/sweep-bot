@@ -110,3 +110,9 @@ class MetaController(LeafSystem):
         q_des = traj.value(local_t).ravel()
 
         output.SetFromVector(q_des)
+
+# use a state machine to keep track of logic
+# diffik to get joint traj from broom traj
+# weld broom to robot to test sweeping
+
+

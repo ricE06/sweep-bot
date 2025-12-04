@@ -13,7 +13,7 @@ X_Joint = RigidTransform(RollPitchYaw(-0.5236, 0, 0), np.array([0, 0.2, 0.35]))
 X_handle_offset = RigidTransform(RollPitchYaw(0, 0, 0), np.array([0, 0, 0.2]))
 
 GRIP_DIST = 0.01
-PREGRIP_DIST = 0.1
+PREGRIP_DIST = 0.2
 
 # helper functions to compute broom related poses
 
@@ -46,7 +46,10 @@ def get_broom_grip(broom_base: RigidTransform, angle: float):
     return X_out
 
 def get_broom_pregrip(broom_base: RigidTransform, angle: float):
+    # move to the handle location, but don't rotate
     X_Whandle: RigidTransform = broom_base @ X_Joint @ X_handle_offset
+    X_Whandle_rotated = X_Whandle @ RigidTransform(RollPitchYaw(0, 0, -angle), np.array([0, 0, 0])) 
+    # X_Whandle: RigidTransform = broom_base @ RigidTransform(RotationMatrix(), X_Joint.translation()) @ X_handle_offset
     X_Whandle_rotated = X_Whandle @ RigidTransform(RollPitchYaw(0, 0, -angle), np.array([0, 0, 0])) 
     X_out =  X_Whandle_rotated @ RigidTransform(RollPitchYaw(0, np.pi, 0), np.array([0, -PREGRIP_DIST, 0]))
     return X_out

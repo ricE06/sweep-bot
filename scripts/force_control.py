@@ -4,6 +4,8 @@ from pydrake.all import (
     JacobianWrtVariable, SpatialForce
 )
 
+# broom bottom friction low
+# high friction for stick, gripper
 def hybrid_force_position_control(
         plant, context,
         frame_E,                              # broom/end-effector frame

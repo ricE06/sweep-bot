@@ -18,11 +18,12 @@ from pydrake.all import (
     OrientationConstraint,
     PathParameterizedTrajectory,
     CompositeTrajectory,
-    BsplineTrajectory
-
+    BsplineTrajectory,
+    Trajectory,
 )
 from manipulation.scenarios import AddIiwa, AddWsg
 from .ik import solve_ik_for_pose
+from .utils import GripConstants
 
 
 def build_temp_plant(q0 = None, meshcat = None):
@@ -97,7 +98,7 @@ def build_temp_plant(q0 = None, meshcat = None):
 
 def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, 
               q0 = None,
-              hold_orientation: bool = False) -> PiecewisePolynomial:
+              hold_orientation: bool = False) -> tuple[Trajectory, Trajectory]:
     """
     Returns joint space trajectory for grasping broom, avoiding collisions between
     iiwa, table, and broom (no gripper or cameras yet)
@@ -212,7 +213,12 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
     if not result.is_success():
         print("Collision optimization failed")
 
-    return trajopt.ReconstructTrajectory(result)
+    traj_V_G: Trajectory = trajopt.ReconstructTrajectory(result)
+    sample_times = [0, traj_V_G.end_time()]
+    finger_values = np.array([GripConstants.opened, GripConstants.opened]).reshape(1, -1)
+    traj_wsg_command = PiecewisePolynomial.FirstOrderHold(sample_times, finger_values)
+
+    return traj_V_G, traj_wsg_command
 
 def combine_trajectory(first_trajectory, second_trajectory):
     return CompositeTrajectory.AlignAndConcatenate([first_trajectory, second_trajectory])
