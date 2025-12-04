@@ -4,8 +4,10 @@ from pydrake.all import (
     MultibodyPlant,
     RigidTransform,
     InverseKinematics,
-    RotationMatrix
+    RotationMatrix,
+    Solve
 )
+import numpy as np
 
 def solve_ik_for_pose(
     plant: MultibodyPlant,
