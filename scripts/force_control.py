@@ -68,3 +68,22 @@ def hybrid_force_position_control(
     tau = Jv.T @ F_total_world.translational()
 
     return tau
+
+#implementation should look something like this
+
+while running:
+    context = diagram.GetMutableSubsystemContext(plant, root_context)
+
+    x_des = RigidTransform(
+        RotationMatrix.MakeZRotation(0),
+        np.array([x_goal, y_goal, z_contact_height])
+    )
+
+    tau = hybrid_force_position_control(
+        plant, context,
+        frame_E=broom_frame,
+        x_des=x_des,
+        Fz_des=-8.0    # push with 8 N downward
+    )
+
+    command_sender.SendTorque(tau)
