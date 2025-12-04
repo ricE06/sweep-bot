@@ -45,7 +45,7 @@ def build_temp_plant(q0 = None, meshcat = None):
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("iiwa_link_0", iiwa),
-        RigidTransform([0, 1.5, 0.0])
+        RigidTransform(RollPitchYaw(0, 0, -np.pi/2), [0, 1.5, 0.0])
     )
 
     wsg = AddWsg(plant, iiwa, welded=True, sphere=True)
@@ -60,15 +60,15 @@ def build_temp_plant(q0 = None, meshcat = None):
     )
 
     # Add broom
-    # broom = parser.AddModels("./models/broom.sdf")[0]
+    broom = parser.AddModels("./models/broom.sdf")[0]
 
-    """
+
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("base_link", broom),
         RigidTransform([0.6, 1.2, 0.025])
     )
-    """
+
 
     gripper_frame = plant.GetFrameByName("body", wsg)
 
@@ -166,7 +166,7 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     prog.AddQuadraticErrorCost(np.eye(nq), q0, trajopt.control_points()[:, -1])
 
     # End orientation constraint
-    R_WG_goal = RotationMatrix(RollPitchYaw([0, 0, 3.141592]))
+    R_WG_goal = RotationMatrix(RollPitchYaw([0, 0, np.pi]))
 
     orientation_constraint = OrientationConstraint(
         plant=plant,
