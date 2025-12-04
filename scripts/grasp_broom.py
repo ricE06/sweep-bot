@@ -45,7 +45,7 @@ def build_temp_plant(q0 = None, meshcat = None):
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("iiwa_link_0", iiwa),
-        RigidTransform(RollPitchYaw(0, 0, -np.pi/2), [0, 1.5, 0.0])
+        RigidTransform(RollPitchYaw(0, 0, 0), [0, 1.5, 0.0])
     )
 
     wsg = AddWsg(plant, iiwa, welded=True, sphere=True)
@@ -125,7 +125,7 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
 
     trajopt.AddDurationCost(1.0)
     trajopt.AddPathLengthCost(1.0)
-    trajopt.AddDurationConstraint(0.1, 3.5)
+    trajopt.AddDurationConstraint(0.1, 10.0)
 
     trajopt.AddPositionBounds(
         plant.GetPositionLowerLimits(),
@@ -141,44 +141,44 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     start_constraint = PositionConstraint(
         plant,
         plant.world_frame(),
-        X_WStart.translation(),
-        X_WStart.translation(),
+        X_WStart.translation() - 0.01,
+        X_WStart.translation() + 0.01,
+        gripper_frame,
+        [0, 0, 0],
+        plant_context
+    )
+
+    # GOAL constraint
+    goal_constraint = PositionConstraint(
+        plant,
+        plant.world_frame(),
+        X_WGoal.translation() - 0.01,
+        X_WGoal.translation() + 0.01,
         gripper_frame,
         [0, 0, 0],
         plant_context
     )
 
     trajopt.AddPathPositionConstraint(start_constraint, 0)
-    prog.AddQuadraticErrorCost(np.eye(nq), q0, trajopt.control_points()[:, 0])
-
-    # GOAL constraint
-    goal_constraint = PositionConstraint(
-        plant,
-        plant.world_frame(),
-        X_WGoal.translation(),
-        X_WGoal.translation(),
-        gripper_frame,
-        [0, 0, 0],
-        plant_context
-    )
+    # prog.AddQuadraticErrorCost(np.eye(nq), q0, trajopt.control_points()[:, 0])
 
     trajopt.AddPathPositionConstraint(goal_constraint, 1)
-    prog.AddQuadraticErrorCost(np.eye(nq), q0, trajopt.control_points()[:, -1])
+    # prog.AddQuadraticErrorCost(np.eye(nq), q0, trajopt.control_points()[:, -1])
 
     # End orientation constraint
     R_WG_goal = RotationMatrix(RollPitchYaw([0, 0, np.pi]))
 
-    orientation_constraint = OrientationConstraint(
-        plant=plant,
-        frameAbar=gripper_frame,
-        R_AbarA=R_WG_goal,
-        frameBbar=plant.world_frame(),
-        R_BbarB=RotationMatrix(),
-        theta_bound=0.01,
-        plant_context=plant_context
-    )
+    # orientation_constraint = OrientationConstraint(
+    #     plant=plant,
+    #     frameAbar=gripper_frame,
+    #     R_AbarA=R_WG_goal,
+    #     frameBbar=plant.world_frame(),
+    #     R_BbarB=RotationMatrix(),
+    #     theta_bound=0.01,
+    #     plant_context=plant_context
+    # )
 
-    trajopt.AddPathPositionConstraint(orientation_constraint, 1)
+    # trajopt.AddPathPositionConstraint(orientation_constraint, 1)
 
     # Start & end velocity = 0
     trajopt.AddPathVelocityConstraint(np.zeros((nq, 1)), np.zeros((nq, 1)), 0)
@@ -187,21 +187,21 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     # ----------------------------------------------------------------
     # Solve without constraints first
 
-    # result = Solve(prog)
-    # if not result.is_success():
-    #     raise RuntimeError("Initial optimization failed")
+    result = Solve(prog)
+    if not result.is_success():
+        raise RuntimeError("Initial optimization failed")
 
     # trajopt.SetInitialGuess(trajopt.ReconstructTrajectory(result))
 
     # ------------------------------------------------------------
     # Solve with collision constraint
-    min_dist_constraint = MinimumDistanceLowerBoundConstraint(plant, 0.05, plant_context, None, 0.1)
-    for s in np.linspace(0, 1, 25):
-        trajopt.AddPathPositionConstraint(min_dist_constraint, s)
+    # min_dist_constraint = MinimumDistanceLowerBoundConstraint(plant, 0.05, plant_context, None, 0.1)
+    # for s in np.linspace(0, 1, 25):
+    #     trajopt.AddPathPositionConstraint(min_dist_constraint, s)
 
-    result = Solve(prog)
-    if not result.is_success():
-        print("Collision optimization failed")
+    # result = Solve(prog)
+    # if not result.is_success():
+    #     print("Collision optimization failed")
 
     return trajopt.ReconstructTrajectory(result)
 
