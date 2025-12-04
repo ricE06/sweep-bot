@@ -12,7 +12,8 @@ def add_cubes(n, x_lower, x_upper, y_lower, y_upper):
     for i in range(n):
         x = random.uniform(x_lower, x_upper)
         y = random.uniform(y_lower, y_upper)
-        z = i / 30 # avoid cubes overlapping
+        # z = i / 30 # avoid cubes overlapping
+        z = 0
 
         cube_directives += f"""
 - add_model:

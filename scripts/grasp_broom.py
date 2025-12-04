@@ -22,6 +22,7 @@ from pydrake.all import (
 
 )
 from manipulation.scenarios import AddIiwa, AddWsg
+from .ik import solve_ik_for_pose
 
 
 def build_temp_plant(q0 = None, meshcat = None):
@@ -94,7 +95,9 @@ def build_temp_plant(q0 = None, meshcat = None):
     return diagram, plant, gripper_frame
 
 
-def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> PiecewisePolynomial:
+def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, 
+              q0 = None,
+              hold_orientation: bool = False) -> PiecewisePolynomial:
     """
     Returns joint space trajectory for grasping broom, avoiding collisions between
     iiwa, table, and broom (no gripper or cameras yet)
@@ -118,14 +121,20 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     trajopt = KinematicTrajectoryOptimization(nq, 10)
     prog = trajopt.get_mutable_prog()
 
+    # start_pose = solve_ik_for_pose(plant, X_WStart)
+    # goal_pose = solve_ik_for_pose(plant, X_WGoal)
     q_guess = np.tile(q0.reshape((7, 1)), (1, trajopt.num_control_points()))
-    q_guess[0, :] = np.linspace(0, -np.pi / 2, trajopt.num_control_points())
+    print(q_guess.shape)
+    q_guess[0, :] = np.linspace(0, np.pi/2, trajopt.num_control_points())
+    # print(q_guess.shape)
+    # print(trajopt.num_control_points())
     path_guess = BsplineTrajectory(trajopt.basis(), q_guess)
     trajopt.SetInitialGuess(path_guess)
 
+
     trajopt.AddDurationCost(1.0)
     trajopt.AddPathLengthCost(1.0)
-    trajopt.AddDurationConstraint(0.1, 10.0)
+    trajopt.AddDurationConstraint(0.1, 3.5)
 
     trajopt.AddPositionBounds(
         plant.GetPositionLowerLimits(),
@@ -141,44 +150,44 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     start_constraint = PositionConstraint(
         plant,
         plant.world_frame(),
-        X_WStart.translation() - 0.01,
-        X_WStart.translation() + 0.01,
-        gripper_frame,
-        [0, 0, 0],
-        plant_context
-    )
-
-    # GOAL constraint
-    goal_constraint = PositionConstraint(
-        plant,
-        plant.world_frame(),
-        X_WGoal.translation() - 0.01,
-        X_WGoal.translation() + 0.01,
+        X_WStart.translation(),
+        X_WStart.translation(),
         gripper_frame,
         [0, 0, 0],
         plant_context
     )
 
     trajopt.AddPathPositionConstraint(start_constraint, 0)
-    # prog.AddQuadraticErrorCost(np.eye(nq), q0, trajopt.control_points()[:, 0])
+    prog.AddQuadraticErrorCost(np.eye(nq), q0, trajopt.control_points()[:, 0])
+
+    # GOAL constraint
+    goal_constraint = PositionConstraint(
+        plant,
+        plant.world_frame(),
+        X_WGoal.translation(),
+        X_WGoal.translation(),
+        gripper_frame,
+        [0, 0, 0],
+        plant_context
+    )
 
     trajopt.AddPathPositionConstraint(goal_constraint, 1)
-    # prog.AddQuadraticErrorCost(np.eye(nq), q0, trajopt.control_points()[:, -1])
+    prog.AddQuadraticErrorCost(np.eye(nq), q0, trajopt.control_points()[:, -1])
 
     # End orientation constraint
-    R_WG_goal = RotationMatrix(RollPitchYaw([0, 0, np.pi]))
+    R_WG_goal = X_WGoal.rotation()
 
-    # orientation_constraint = OrientationConstraint(
-    #     plant=plant,
-    #     frameAbar=gripper_frame,
-    #     R_AbarA=R_WG_goal,
-    #     frameBbar=plant.world_frame(),
-    #     R_BbarB=RotationMatrix(),
-    #     theta_bound=0.01,
-    #     plant_context=plant_context
-    # )
+    orientation_constraint = OrientationConstraint(
+        plant=plant,
+        frameAbar=gripper_frame,
+        R_AbarA=RotationMatrix(),
+        frameBbar=plant.world_frame(),
+        R_BbarB=R_WG_goal,
+        theta_bound=0.01,
+        plant_context=plant_context
+    )
 
-    # trajopt.AddPathPositionConstraint(orientation_constraint, 1)
+    trajopt.AddPathPositionConstraint(orientation_constraint, 1)
 
     # Start & end velocity = 0
     trajopt.AddPathVelocityConstraint(np.zeros((nq, 1)), np.zeros((nq, 1)), 0)
@@ -187,21 +196,21 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, q0 = None) -> P
     # ----------------------------------------------------------------
     # Solve without constraints first
 
-    result = Solve(prog)
-    if not result.is_success():
-        raise RuntimeError("Initial optimization failed")
+    # result = Solve(prog)
+    # if not result.is_success():
+    #     raise RuntimeError("Initial optimization failed")
 
     # trajopt.SetInitialGuess(trajopt.ReconstructTrajectory(result))
 
     # ------------------------------------------------------------
     # Solve with collision constraint
-    # min_dist_constraint = MinimumDistanceLowerBoundConstraint(plant, 0.05, plant_context, None, 0.1)
-    # for s in np.linspace(0, 1, 25):
-    #     trajopt.AddPathPositionConstraint(min_dist_constraint, s)
+    min_dist_constraint = MinimumDistanceLowerBoundConstraint(plant, 0.005, plant_context, None, 0.001)
+    for s in np.linspace(0, 1, 25):
+        trajopt.AddPathPositionConstraint(min_dist_constraint, s)
 
-    # result = Solve(prog)
-    # if not result.is_success():
-    #     print("Collision optimization failed")
+    result = Solve(prog)
+    if not result.is_success():
+        print("Collision optimization failed")
 
     return trajopt.ReconstructTrajectory(result)
 
