@@ -183,7 +183,7 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
         R_AbarA=RotationMatrix(),
         frameBbar=plant.world_frame(),
         R_BbarB=R_WG_goal,
-        theta_bound=0.01,
+        theta_bound=0.001,
         plant_context=plant_context
     )
 
@@ -204,7 +204,7 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
 
     # ------------------------------------------------------------
     # Solve with collision constraint
-    min_dist_constraint = MinimumDistanceLowerBoundConstraint(plant, 0.005, plant_context, None, 0.001)
+    min_dist_constraint = MinimumDistanceLowerBoundConstraint(plant, 0.001, plant_context, None, 1e-6)
     for s in np.linspace(0, 1, 25):
         trajopt.AddPathPositionConstraint(min_dist_constraint, s)
 
