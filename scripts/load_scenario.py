@@ -44,11 +44,15 @@ def load_scenario():
         camera_string = f.read()
     scenario_string += add_cubes(20, -1, +1, 0.5, 1)
     scenario_string += '\n' + camera_string
+#     scenario_string += """
+# model_drivers:
+#     iiwa: !IiwaDriver
+#       control_mode: position_only
+#       hand_model_name: wsg
+#     wsg: !SchunkWsgDriver {}
+# """
     scenario_string += """
 model_drivers:
-    iiwa: !IiwaDriver
-      control_mode: position_only
-      hand_model_name: wsg
     wsg: !SchunkWsgDriver {}
 """
     # put in cwd
