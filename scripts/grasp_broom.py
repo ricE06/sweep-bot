@@ -12,6 +12,7 @@ from pydrake.all import (
     MinimumDistanceLowerBoundConstraint,
     Solve,
     PiecewisePolynomial,
+    PiecewisePose,
     Role,
     RollPitchYaw,
     FixedOffsetFrame,
@@ -96,7 +97,7 @@ def build_temp_plant(q0 = None, meshcat = None):
     return diagram, plant, gripper_frame
 
 
-def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform, 
+def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
               q0 = None,
               hold_orientation: bool = False) -> tuple[Trajectory, Trajectory]:
     """
@@ -220,5 +221,55 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
 
     return traj_V_G, traj_wsg_command
 
-def combine_trajectory(first_trajectory, second_trajectory):
-    return CompositeTrajectory.AlignAndConcatenate([first_trajectory, second_trajectory])
+def straight_path(plant, q_current, X_WGoal):
+    """
+    Create a simple straight line joint space trajectory from current joint position to
+    goal assuming both IK solutions are reachable.
+
+    Args:
+        q_current: current joint position of iiwa
+        X_WGoal: the goal location in workspace
+    """
+
+    # Get IK solutions
+    q_current = q_current.reshape(-1)
+    q_goal = solve_ik_for_pose(plant, X_WGoal, q_nominal=q_current)
+
+    q_mat = np.vstack([q_current, q_goal]).T  # shape (nq, 2)
+    times = [0, 0.75]  # 0.75 seconds approach
+
+    traj = PiecewisePolynomial.FirstOrderHold(times, q_mat)
+    return traj
+
+
+def grasp_path(X_WStart, X_WPregrasp, X_WGrasp, X_WLift):
+    opened = GripConstants.opened
+    closed = GripConstants.closed
+
+    # start -> pregrasp
+    arm_1, _ = plan_path(X_WStart, X_WPregrasp)
+    q_pre = arm_1.value(arm_1.end_time())
+
+    # approach: pregrasp -> grasp (straight line)
+    diagram, plant, gripper_frame = build_temp_plant()
+    arm_2 = straight_path(plant, q_pre, X_WGrasp)
+    q_grasp = arm_2.value(arm_2.end_time())
+
+    # lift: grasp -> lift
+    arm_3 = straight_path(plant, q_grasp, X_WLift)
+
+    # combine
+    arm_traj = CompositeTrajectory.AlignAndConcatenate([arm_1, arm_2, arm_3])
+
+    # get end times
+    t1 = arm_1.end_time()
+    t2 = t1 + arm_2.end_time()
+    t3 = arm_traj.end_time()
+
+    # build gripper trajectory
+    wsg_times = [0, t1, t2, t2 + 0.2, t3]
+    wsg_pos   = np.array([[opened, opened, opened, closed, closed]])
+
+    wsg_traj = PiecewisePolynomial.FirstOrderHold(wsg_times, wsg_pos)
+
+    return arm_traj, wsg_traj
