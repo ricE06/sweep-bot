@@ -38,81 +38,104 @@ class MetaController(LeafSystem):
     depending on where in the simulation we are in.
     """
 
-    def __init__(self, plant: MultibodyPlant,
+    PHASE_OPT      = 0
+    PHASE_PREGRIP  = 1
+    PHASE_SWEEP    = 2
+    PHASE_RETURN   = 3
+
+    def __init__(self, plant,
                  traj_opt,
                  traj_pregrip_to_grip,
                  traj_sweep,
                  traj_return=None):
+
         super().__init__()
 
         self._plant = plant
         self._nq = plant.num_positions()
-        self._traj_opt = traj_opt
-        self._traj_pregrip = traj_pregrip_to_grip
-        self._traj_sweep = traj_sweep
-        self._traj_return = traj_return
 
-        # compute durations for stitch
-        self._t_opt = traj_opt.end_time() - traj_opt.start_time()
-        self._t_pregrip = traj_pregrip_to_grip.end_time() - traj_pregrip_to_grip.start_time()
-        self._t_sweep = traj_sweep.end_time() - traj_sweep.start_time()
-        self._t_return = (traj_return.end_time() - traj_return.start_time()) if traj_return else 0
+        # Store trajectories
+        self._traj = {
+            self.PHASE_OPT: traj_opt,
+            self.PHASE_PREGRIP: traj_pregrip_to_grip,
+            self.PHASE_SWEEP: traj_sweep,
+            self.PHASE_RETURN: traj_return,
+        }
 
-        #cummulative phase times
-        self._phase_times = [
-            self._t_opt,
-            self._t_opt + self._t_pregrip,
-            self._t_opt + self._t_pregrip + self._t_sweep,
-            self._t_opt + self._t_pregrip + self._t_sweep + self._t_return,
-        ]
+        # state vars:
+        # 1. Phase index (discrete integer)
+        self._phase_idx = self.DeclareDiscreteState(1)
+        # 2. Local time within the phase
+        self._phase_time = self.DeclareDiscreteState(1)
 
+        # Input: 1 → request next phase; 0 → do nothing
+        self._advance_port = self.DeclareVectorInputPort(
+            "advance_phase", BasicVector(1)
+        ).get_index()
+        # Output: desired joint position
         self.DeclareVectorOutputPort(
             "position_command",
             BasicVector(self._nq),
             self.CalcPosOutput
         )
-    def _get_phase_and_local_time(self, t):
-        """
-        Given global simulation time t, determine:
-        - current phase index (0, 1, 2, or 3)
-        - local time within that trajectory
-        """
-        # Phase 0: traj_opt
-        if t < self._phase_times[0]:
-            return 0, t
-        # Phase 1: pregrip → grip
-        if t < self._phase_times[1]:
-            return 1, t - self._phase_times[0]
-        # phase 2: sweeping
-        if t < self._phase_times[2]:
-            return 2, t - self._phase_times[1]
-        # Phase 3: return
-        if self._traj_return:
-            local_t = min(t - self._phase_times[2], self._t_return)
-            return 3, local_t
-        # No return trajectory, maintain last position
-        return 2, self._t_sweep
 
-    def CalcPosOutput(self, context: Context, output: BasicVector):
-        t = context.get_time()
-        phase, local_t = self._get_phase_and_local_time(t)
-        if phase == 0:
-            traj = self._traj_opt
-        elif phase == 1:
-            traj = self._traj_pregrip
-        elif phase == 2:
-            traj = self._traj_sweep
-        else:
-            traj = self._traj_return
+        # Update handler (discrete time step)
+        self.DeclarePeriodicDiscreteUpdateEvent(
+            period_sec=0.001,
+            handler=self.DoUpdate
+        )
 
-        local_t = np.clip(local_t, traj.start_time(), traj.end_time())
+    #UPDATE LOOP (state machine)
+    def DoUpdate(self, context, state):
 
-        q_des = traj.value(local_t).ravel()
+        phase = int(context.get_discrete_state(self._phase_idx).get_value()[0])
+        t_local = context.get_discrete_state(self._phase_time).get_value()[0]
+
+        advance = 0
+        if self.get_input_port(self._advance_port).HasValue(context):
+            advance = int(self.get_input_port(self._advance_port).Eval(context)[0])
+
+        traj = self._traj.get(phase, None)
+
+        # Advance loc time each tick
+        dt = 0.001
+        t_local += dt
+
+        # 1. external request to advance
+        if advance == 1:
+            phase = min(phase + 1, self.PHASE_RETURN)
+            t_local = 0.0
+
+        # 2. Automatic transition on trajectory completion
+        elif traj is not None and t_local >= traj.end_time():
+            phase = min(phase + 1, self.PHASE_RETURN)
+            t_local = 0.0
+
+        # Write back updated states
+        state.get_mutable_discrete_state(self._phase_idx).set_value([phase])
+        state.get_mutable_discrete_state(self._phase_time).set_value([t_local])
+
+    def CalcPosOutput(self, context, output):
+        phase = int(context.get_discrete_state(self._phase_idx).get_value()[0])
+        t_local = context.get_discrete_state(self._phase_time).get_value()[0]
+
+        traj = self._traj.get(phase, None)
+
+        if traj is None:
+            # If no return trajectory → hold last pose of sweep
+            traj = self._traj[self.PHASE_SWEEP]
+            t_local = traj.end_time()
+
+        t_local = np.clip(t_local, traj.start_time(), traj.end_time())
+        q_des = traj.value(t_local).ravel()
 
         output.SetFromVector(q_des)
+
+    def generate_sweep():
+        pass
+    def generate_grasp():
+        pass
 
 # use a state machine to keep track of logic
 # diffik to get joint traj from broom traj
 # weld broom to robot to test sweeping
-
-
