@@ -19,7 +19,9 @@ else:
     MetaController = None
 
 from .utils import GripConstants
-from .broom_utils import get_broom_grip, get_broom_pregrip, compute_broom_grasp_angle, make_trajectory
+from .broom_utils import get_broom_grip, get_broom_pregrip, compute_broom_grasp_angle 
+from .point_cloud import get_point_cloud
+from .sample_sweep import SweepGenerator
 
 # took from pset3, 11_pickplace_initials
 def make_trajectory(
@@ -38,16 +40,14 @@ def get_robot_pose(controller: MetaController) -> RigidTransform:
 
 class TrajectoryGenerator(ABC):
 
-    @classmethod
-    def trajectory(cls, controller: MetaController) -> tuple[Trajectory, Trajectory]:
+    def trajectory(self, controller: MetaController) -> tuple[Trajectory, Trajectory]:
         raise NotImplementedError
 
 class PregripToGrip(TrajectoryGenerator):
 
     trajectory_time = 1
 
-    @classmethod
-    def trajectory(cls, controller: MetaController) -> tuple[Trajectory, Trajectory]:
+    def trajectory(self, controller: MetaController) -> tuple[Trajectory, Trajectory]:
         broom_pose = get_broom_pose(controller)
         robot_pos = get_robot_pose(controller).translation()
         angle = compute_broom_grasp_angle(broom_pose, robot_pos)
@@ -57,7 +57,7 @@ class PregripToGrip(TrajectoryGenerator):
         pregrip = get_broom_pregrip(broom_pose, angle)
         grip = get_broom_grip(broom_pose, angle)
         gripper_poses = [pregrip, grip, grip]
-        times = [0, cls.trajectory_time/2, cls.trajectory_time]
+        times = [0, self.trajectory_time/2, self.trajectory_time]
         traj_gripper, traj_wsg = make_trajectory(gripper_poses, finger_states, times)
         return traj_gripper, traj_wsg
 
@@ -67,6 +67,32 @@ class Return(TrajectoryGenerator):
 class MoveToPregrip(TrajectoryGenerator):
     pass
 
+target = (0, 0)
+reachable_min = (-2, 0)
+reachable_max = (2, 2.2)
+startable_min = (-2, 2)
+startable_max = (2, 2.2)
 class ManipulateBroom(TrajectoryGenerator):
-    pass
+
+    sweep_generator = SweepGenerator(target, reachable_min, reachable_max, startable_min, startable_max)
+    num_point_samples = 200
+
+    def trajectory(self, controller: MetaController) -> tuple[Trajectory, Trajectory]:
+        point_cloud = get_point_cloud(controller)
+
+        point_cloud_xy = point_cloud[0:2, :]
+        num_points = len(point_cloud_xy)
+        if num_points > self.num_point_samples:
+            sample_idxs = np.random.choice(np.arange(num_points), self.num_point_samples, replace=False)
+        else:
+            sample_idxs = np.arange(num_points)
+        point_set = set()
+        for i in sample_idxs:
+            point_set.add((point_cloud_xy[i, 0], point_cloud_xy[i, 1]))
+
+        sweep = self.sweep_generator.find_sweep(point_set)
+        print(sweep)
+
+traj = [PregripToGrip, Return, MoveToPregrip, ]
+traj[2].trajectory()
 

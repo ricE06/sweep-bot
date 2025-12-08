@@ -20,8 +20,6 @@ class SweepGenerator:
     num_segments = 5
 
     def __init__(self,
-                 block_locations: set[tuple[float, float]],
-                 num_pieces: float,
                  target: tuple[float, float],
                  reachable_min: tuple[float, float],
                  reachable_max: tuple[float, float],

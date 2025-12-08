@@ -4,3 +4,8 @@ cameras:
         depth: True
         X_PB:
             base_frame: camera0::base
+    camera1:
+        name: camera1
+        depth: True
+        X_PB:
+            base_frame: camera1::base
