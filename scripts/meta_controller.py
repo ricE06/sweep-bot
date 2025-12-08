@@ -2,10 +2,12 @@ import numpy as np
 from pydrake.all import (
         BasicVector,
         Context,
+        Diagram,
         MultibodyPlant,
         LeafSystem,
 )
 
+from .point_cloud import get_point_cloud
 
 # THE FOLLOWING IS LEFT TO DO:
 #
@@ -44,7 +46,10 @@ class MetaController(LeafSystem):
     PHASE_SWEEP    = 2
     PHASE_RETURN   = 3
 
-    def __init__(self, plant,
+    def __init__(self, 
+                 plant: MultibodyPlant, 
+                 station,
+                 diagram,
                  traj_opt,
                  traj_pregrip_to_grip,
                  traj_sweep,
@@ -52,10 +57,20 @@ class MetaController(LeafSystem):
 
         super().__init__()
 
+        # for the various helper classes to use
+        self.diagram = diagram
         self.plant = plant
-        self.plant_context = plant.CreateDefaultContext()
+        self.station = station
+        self.context = diagram.CreateDefaultContext()
+        self.plant_context = plant.GetMyContextFromRoot(self.context)
+        # self.station_context = station.CreateDefaultContext()
         self.base = plant.GetBodyByName("base", plant.GetModelInstanceByName('iiwa'))
         self.body = plant.GetBodyByName("handle_link")
+
+        # link camera
+        print(get_point_cloud(self))
+        return
+
         self._nq = plant.num_positions()
 
         # Store trajectories
