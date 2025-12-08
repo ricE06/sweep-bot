@@ -133,8 +133,6 @@ class MetaController(LeafSystem):
 
     def generate_sweep():
         pass
-    def generate_grasp():
-        pass
 
 # use a state machine to keep track of logic
 # diffik to get joint traj from broom traj

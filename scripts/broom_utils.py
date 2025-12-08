@@ -15,7 +15,7 @@ X_handle_offset = RigidTransform(RollPitchYaw(0, 0, 0), np.array([0, 0, 0.2]))
 X_offset = X_Joint @ X_handle_offset
 
 GRIP_DIST = 0.01
-PREGRIP_DIST = 0.2
+PREGRIP_DIST = 0.18
 
 # helper functions to compute broom related poses
 
@@ -28,9 +28,14 @@ def compute_broom_grasp_angle(broom_base: RigidTransform, robot_center: np.ndarr
     return angle
 
 def compute_wrist_rotation_angle(cur_grasp: RigidTransform): 
-    # project out component in direction of the gripper
-    gripper_vec = cur_grasp.rotation().matrix()[:, 1]
-    print(gripper_vec)
+    # we need to make gripper x orthogonal to broom dir
+    gripper_x = cur_grasp.rotation().matrix()[:, 0]
+    broom_direction = cur_grasp.InvertAndCompose(X_offset)
+    roll_ang = broom_direction.rotation().ToRollPitchYaw().roll_angle()
+    print(gripper_x)
+    print(broom_direction)
+    print(roll_ang)
+    return roll_ang
 
 def _get_broom_offset(broom_base: RigidTransform, angle: float, offset: float):
     """
@@ -38,16 +43,13 @@ def _get_broom_offset(broom_base: RigidTransform, angle: float, offset: float):
     with offset (positive radially outward at this angle)
     """
     broom_transposed = broom_base @ RigidTransform(RollPitchYaw(0, 0, angle), X_offset.translation())
-    return broom_transposed
+    wrist_angle = compute_wrist_rotation_angle(broom_transposed)
+    broom_grip = broom_transposed @ RigidTransform(RollPitchYaw(wrist_angle, 0, 0), np.array([0, 0, 0]))
+    broom_grip_offset = broom_grip @ RigidTransform(RotationMatrix(), np.array([0, -offset, 0]))
+    return broom_grip_offset
 
 def get_broom_grip(broom_base: RigidTransform, angle: float):
     return _get_broom_offset(broom_base, angle, GRIP_DIST)
 
 def get_broom_pregrip(broom_base: RigidTransform, angle: float):
-    # move to the handle location, but don't rotate
-    X_Whandle: RigidTransform = broom_base @ X_Joint @ X_handle_offset
-    X_Whandle_rotated = X_Whandle @ RigidTransform(RollPitchYaw(0, 0, -angle), np.array([0, 0, 0])) 
-    # X_Whandle: RigidTransform = broom_base @ RigidTransform(RotationMatrix(), X_Joint.translation()) @ X_handle_offset
-    X_Whandle_rotated = X_Whandle @ RigidTransform(RollPitchYaw(0, 0, -angle), np.array([0, 0, 0])) 
-    X_out =  X_Whandle_rotated @ RigidTransform(RollPitchYaw(0, np.pi, 0), np.array([0, -PREGRIP_DIST, 0]))
-    return X_out
+    return _get_broom_offset(broom_base, angle, PREGRIP_DIST)
