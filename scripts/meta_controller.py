@@ -6,6 +6,7 @@ from pydrake.all import (
         LeafSystem,
 )
 
+
 # THE FOLLOWING IS LEFT TO DO:
 #
 # Metacontroller oversees a several step process:
@@ -51,7 +52,10 @@ class MetaController(LeafSystem):
 
         super().__init__()
 
-        self._plant = plant
+        self.plant = plant
+        self.plant_context = plant.CreateDefaultContext()
+        self.base = plant.GetBodyByName("base", plant.GetModelInstanceByName('iiwa'))
+        self.body = plant.GetBodyByName("handle_link")
         self._nq = plant.num_positions()
 
         # Store trajectories

@@ -32,9 +32,6 @@ def compute_wrist_rotation_angle(cur_grasp: RigidTransform):
     gripper_x = cur_grasp.rotation().matrix()[:, 0]
     broom_direction = cur_grasp.InvertAndCompose(X_offset)
     roll_ang = broom_direction.rotation().ToRollPitchYaw().roll_angle()
-    print(gripper_x)
-    print(broom_direction)
-    print(roll_ang)
     return roll_ang
 
 def _get_broom_offset(broom_base: RigidTransform, angle: float, offset: float):
