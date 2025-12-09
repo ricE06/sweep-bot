@@ -41,7 +41,7 @@ def _get_broom_offset(broom_base: RigidTransform, angle: float, offset: float):
     """
     broom_transposed = broom_base @ RigidTransform(RollPitchYaw(0, 0, angle), X_offset.translation())
     wrist_angle = compute_wrist_rotation_angle(broom_transposed)
-    broom_grip = broom_transposed @ RigidTransform(RollPitchYaw(wrist_angle, 0, 0), np.array([0, 0, 0]))
+    broom_grip = broom_transposed @ RigidTransform(RollPitchYaw(0, wrist_angle, 0), np.array([0, 0, 0]))
     broom_grip_offset = broom_grip @ RigidTransform(RotationMatrix(), np.array([0, -offset, 0]))
     return broom_grip_offset
 

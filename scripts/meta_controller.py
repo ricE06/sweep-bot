@@ -18,7 +18,6 @@ from pydrake.all import (
 
 from .point_cloud import get_point_cloud
 from .trajectory_helpers import TrajectoryGenerator, MoveToPregrip, PregripToGrip, ManipulateBroom
-from .ik import solve_ik_for_pose
 
 # THE FOLLOWING IS LEFT TO DO:
 #
@@ -63,6 +62,9 @@ class MetaController(LeafSystem):
     GRIP = 2
     PHASE_RETURN = 3
 
+    TRAJ_Q = 0
+    TRAJ_POSE = 1
+
     diagram: Diagram = None
     context: Context = None
     plant_context: Context = None
@@ -81,7 +83,7 @@ class MetaController(LeafSystem):
 
         self._nq = 7
 
-        self._discrete_state = self.DeclareDiscreteState(3)
+        self._discrete_state = self.DeclareDiscreteState(4)
         self._phase_idx = self._discrete_state
         self._last_traj_start_time = int(self._discrete_state) + 1
         self._last_traj_end_time = int(self._discrete_state) + 2

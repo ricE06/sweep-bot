@@ -32,15 +32,15 @@ from .ik import solve_ik_for_pose
 # took from pset3, 11_pickplace_initials
 def make_trajectory(
     X_Gs: list[RigidTransform], finger_values: np.ndarray, sample_times: list[float]
-) -> tuple[Trajectory, PiecewisePolynomial]:
+) -> tuple[PiecewisePose, PiecewisePolynomial]:
     robot_position_trajectory = PiecewisePose.MakeLinear(sample_times, X_Gs)
-    robot_velocity_trajectory = robot_position_trajectory.MakeDerivative()
+    # robot_velocity_trajectory = robot_position_trajectory.MakeDerivative()
     traj_wsg_command = PiecewisePolynomial.FirstOrderHold(sample_times, finger_values)
-    return robot_velocity_trajectory, traj_wsg_command
+    return robot_position_trajectory, traj_wsg_command
 
 def convert_to_angles(controller: MetaController,
-                      pose_trajectory: Trajectory, 
-                      num_divisions: int = 100):
+                      pose_trajectory: PiecewisePose,
+                      num_divisions: int = 1000):
     # get starting angles of robot
     robot = controller.plant.GetModelInstanceByName('iiwa')
     q_start = controller.plant.GetPositions(controller.plant_context, robot)
@@ -50,9 +50,10 @@ def convert_to_angles(controller: MetaController,
     spacing = end_time / num_divisions
     for i in range(num_divisions):
         time = spacing*i
-        pose = pose_trajectory.value(time)
-        trans = RigidTransform(RollPitchYaw(pose[3], pose[4], pose[5]), pose[0:3])
-        q_next = solve_ik_for_pose(controller.plant, trans, q_frames[-1])
+        pose = pose_trajectory.GetPose(time)
+        q_next = solve_ik_for_pose(controller.plant, pose, q_frames[-1], pos_tol = 0.03)
+        if i % 10 == 0:
+            print(q_next)
         q_frames.append(q_next)
 
     q_frames = np.array(q_frames).T
@@ -82,6 +83,7 @@ class PregripToGrip(TrajectoryGenerator):
 
     def trajectory(self, controller: MetaController) -> tuple[Trajectory, Trajectory]:
         broom_pose = get_broom_pose(controller)
+        print('broom pose', broom_pose)
         robot_pos = get_robot_pose(controller).translation()
         angle = compute_broom_grasp_angle(broom_pose, robot_pos)
 
@@ -95,12 +97,15 @@ class PregripToGrip(TrajectoryGenerator):
         
         end_time = traj_gripper.end_time()
         for i in range(101):
-            pose = traj_gripper.value(end_time * i / 100)
-            trans = RigidTransform(RollPitchYaw(pose[3], pose[4], pose[5]), pose[0:3])
-            AddMeshcatTriad(controller.meshcat, f'{i}', X_PT=trans)
+            pose = traj_gripper.GetPose(end_time * i / 100)
+            print(pose.translation())
+            AddMeshcatTriad(controller.meshcat, f'{i}', X_PT=pose)
 
         traj_gripper_q = convert_to_angles(controller, traj_gripper) 
         return traj_gripper_q, traj_wsg
+
+class GripToPregrip(TrajectoryGenerator):
+    pass
 
 class Return(TrajectoryGenerator):
     trajectory_time = 2
