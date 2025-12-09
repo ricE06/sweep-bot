@@ -77,6 +77,45 @@ class TrajectoryGenerator(ABC):
     def trajectory(self, controller: MetaController) -> tuple[Trajectory, Trajectory]:
         raise NotImplementedError
 
+class RotateGrip(TrajectoryGenerator):
+    # intiialize with goal pose of broom
+
+    trajectory_time = 2.0
+    num_steps = 10
+
+    def __init__(self, broom_goal: RigidTransform):
+        self.broom_goal = broom_goal
+
+    def trajectory(self, controller: MetaController):
+        broom_current = get_broom_pose(controller)
+        gripper_current = get_gripper_pose(controller)
+
+
+        # linearly interpolate 10 different broom rotations in between
+        sample_times = [0.0, self.trajectory_time]
+        X_Gs = [broom_current, self.broom_goal]
+
+        broom_traj = PiecewisePose.MakeLinear(sample_times, X_Gs)
+
+        # sample uniformly
+        times = np.linspace(0, self.trajectory_time, self.num_steps + 1)
+        broom_poses = [broom_traj.get_pose(t) for t in times]
+
+        # gripper to broom base
+        X_GB = gripper_current.inverse().multiply(broom_current)
+
+        gripper_poses = []
+        for X_WB in broom_poses:
+            X_WG = X_WB.multiply(X_GB.inverse())
+            gripper_poses.append(X_WG)
+
+        finger_values = np.array([[GripConstants.closed] * len(gripper_poses)])
+
+        times = np.linspace(0, self.trajectory_time, len(gripper_poses)).tolist()
+
+        traj_gripper, traj_wsg = make_trajectory(gripper_poses, finger_values, times)
+        return traj_gripper, traj_wsg
+
 class PregripToGrip(TrajectoryGenerator):
 
     trajectory_time = 1
@@ -94,7 +133,7 @@ class PregripToGrip(TrajectoryGenerator):
         gripper_poses = [pregrip, grip, grip]
         times = [0, self.trajectory_time/2, self.trajectory_time]
         traj_gripper, traj_wsg = make_trajectory(gripper_poses, finger_states, times)
-        
+
         """
         end_time = traj_gripper.end_time()
         for i in range(101):
@@ -103,7 +142,7 @@ class PregripToGrip(TrajectoryGenerator):
             AddMeshcatTriad(controller.meshcat, f'{i}', X_PT=pose)
         """
 
-        # traj_gripper_q = convert_to_angles(controller, traj_gripper) 
+        # traj_gripper_q = convert_to_angles(controller, traj_gripper)
         # return traj_gripper_q, traj_wsg
         # these are poses, will be converted to q and qdot by metacontroller
         return traj_gripper, traj_wsg
