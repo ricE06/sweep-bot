@@ -26,7 +26,7 @@ def add_cubes(n, x_lower, x_upper, y_lower, y_upper):
 """
     return cube_directives
 
-def load_scenario():
+def load_scenario(use_cubes=True):
     """
     Loads the scenario for the sweeper simulation.
     Should contain:
@@ -40,9 +40,11 @@ def load_scenario():
     """
     with open('./scripts/scenario.yaml', 'r') as f:
         scenario_string = f.read()
+
     with open('./scripts/camera.yaml', 'r') as f:
         camera_string = f.read()
-    scenario_string += add_cubes(20, -1, +1, 0.5, 1)
+    if use_cubes:
+        scenario_string += add_cubes(20, -1, +1, 0.5, 1)
     scenario_string += '\n' + camera_string
 #     scenario_string += """
 # model_drivers:
