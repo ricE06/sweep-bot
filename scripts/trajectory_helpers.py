@@ -13,6 +13,7 @@ from pydrake.all import (
         Trajectory,
 )
 from scripts.grasp_broom import plan_path
+from manipulation.meshcat_utils import AddMeshcatTriad
 
 # so we can have type annotaitons but prevent circular imports
 # https://stackoverflow.com/questions/39740632/python-type-hinting-without-cyclic-imports
@@ -91,6 +92,13 @@ class PregripToGrip(TrajectoryGenerator):
         gripper_poses = [pregrip, grip, grip]
         times = [0, self.trajectory_time/2, self.trajectory_time]
         traj_gripper, traj_wsg = make_trajectory(gripper_poses, finger_states, times)
+        
+        end_time = traj_gripper.end_time()
+        for i in range(101):
+            pose = traj_gripper.value(end_time * i / 100)
+            trans = RigidTransform(RollPitchYaw(pose[3], pose[4], pose[5]), pose[0:3])
+            AddMeshcatTriad(controller.meshcat, f'{i}', X_PT=trans)
+
         traj_gripper_q = convert_to_angles(controller, traj_gripper) 
         return traj_gripper_q, traj_wsg
 
