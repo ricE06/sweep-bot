@@ -26,6 +26,7 @@ from .utils import GripConstants
 from .broom_utils import get_broom_grip, get_broom_pregrip, compute_broom_grasp_angle
 from .point_cloud import get_point_cloud
 from .sample_sweep import SweepGenerator
+from .ik import solve_ik_for_pose
 
 # took from pset3, 11_pickplace_initials
 def make_trajectory(
@@ -35,6 +36,27 @@ def make_trajectory(
     robot_velocity_trajectory = robot_position_trajectory.MakeDerivative()
     traj_wsg_command = PiecewisePolynomial.FirstOrderHold(sample_times, finger_values)
     return robot_velocity_trajectory, traj_wsg_command
+
+def convert_to_angles(controller: MetaController,
+                      pose_trajectory: Trajectory, 
+                      num_divisions: int = 100):
+    # get starting angles of robot
+    robot = controller.plant.GetModelInstanceByName('iiwa')
+    q_start = controller.plant.GetPositions(controller.plant_context, robot)
+
+    end_time = pose_trajectory.end_time()
+    q_frames = [q_start]
+    spacing = end_time / num_divisions
+    for i in range(num_divisions):
+        time = spacing*i
+        pose = pose_trajectory.value(time)
+        trans = RigidTransform(RollPitchYaw(pose[3], pose[4], pose[5]), pose[0:3])
+        q_next = solve_ik_for_pose(controller.plant, trans, q_frames[-1])
+        q_frames.apppend(q_next)
+
+    # closed on both ends, fencepost
+    times = np.linspace(0, end_time, num=num_divisions+1)
+    return PiecewisePose.MakeLinear(times, q_frames)
 
 def get_broom_pose(controller: MetaController) -> RigidTransform:
     return controller.plant.EvalBodyPoseInWorld(controller.plant_context, controller.body)
@@ -66,7 +88,8 @@ class PregripToGrip(TrajectoryGenerator):
         gripper_poses = [pregrip, grip, grip]
         times = [0, self.trajectory_time/2, self.trajectory_time]
         traj_gripper, traj_wsg = make_trajectory(gripper_poses, finger_states, times)
-        return traj_gripper, traj_wsg
+        traj_gripper_q = convert_to_angles(controller, traj_gripper) 
+        return traj_gripper_q, traj_wsg
 
 class Return(TrajectoryGenerator):
     trajectory_time = 2

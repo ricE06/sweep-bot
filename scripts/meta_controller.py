@@ -18,6 +18,7 @@ from pydrake.all import (
 
 from .point_cloud import get_point_cloud
 from .trajectory_helpers import TrajectoryGenerator, MoveToPregrip, PregripToGrip, ManipulateBroom
+from .ik import solve_ik_for_pose
 
 # THE FOLLOWING IS LEFT TO DO:
 #
@@ -143,6 +144,7 @@ class MetaController(LeafSystem):
         print(f'will end at: {time+traj_length}')
         values_vec.SetAtIndex(int(self._last_traj_start_time), time)
         values_vec.SetAtIndex(int(self._last_traj_end_time), time+traj_length)
+
         # start_time_port = context.get_mutable_discrete_state(int(self._last_traj_start_time))
         # start_time_port.set_value(np.array([time]))
         # end_time_port.set_value(np.array([time+traj_length]))
