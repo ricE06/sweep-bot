@@ -142,7 +142,8 @@ class MetaController(LeafSystem):
     def CalcSysOutput(self, context: Context, output: BasicVector):
         phase = int(context.get_discrete_state(self._phase_idx).get_value()[0])
         time = context.get_time()
-        start_time = context.get_discrete_state(int(self._last_traj_start_time)).get_value()[0]
+        start_time_port = context.get_mutable_discrete_state(int(self._last_traj_start_time))
+        start_time = start_time_port.get_value()[0]
         rel_time = time - start_time
 
         trajectories: Trajectories = context.get_abstract_state(int(self._cur_sweep_trajectory)).get_value()
@@ -155,11 +156,20 @@ class MetaController(LeafSystem):
         pos = trajectories.gripper_pos
         vel = trajectories.gripper_vel
         t_local = np.clip(rel_time, pos.start_time(), pos.end_time())
-        q_des = pos.value(t_local).ravel()
-        q_dot_des = vel.value(t_local).ravel()
-        wsg_des = trajectories.wsg.value(t_local).ravel()
 
-        output.SetFromVector(np.concat(q_des, q_dot_des, wsg_des))
+        # don't ask
+        q_des = np.array(pos.value(t_local).ravel()).reshape(1, -1).reshape(7,)
+        q_dot_des = np.array(vel.value(t_local).ravel()).reshape(1, -1).reshape(7,)
+        wsg_val = trajectories.wsg.value(t_local).ravel()[0]
+        wsg_des = np.array([float(wsg_val)])
+
+        start_time_port.SetFromVector(np.array([time]))
+
+        end_time_port = context.get_mutable_discrete_state(int(self._last_traj_end_time))
+        traj_length = pos.end_time()
+        end_time_port.SetFromVector(np.array([time+traj_length]))
+
+        output.SetFromVector(np.concat([q_des, q_dot_des, wsg_des]))
 
     #UPDATE LOOP (state machine)
     def DoUpdate(self, context, state):

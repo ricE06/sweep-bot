@@ -27,7 +27,10 @@ from .ik import solve_ik_for_pose
 from .utils import GripConstants
 
 
-def build_temp_plant(q0 = None, meshcat = None):
+def build_temp_plant(q0 = None, meshcat = None, broom_pose: RigidTransform | None = None):
+    if broom_pose is None:
+        broom_pose = RigidTransform([0.6, 1.2, 0.025])
+
     # BUILD NEW PLANT WITH EVERYTHING WELDED
     builder = DiagramBuilder()
     plant, scene_graph = AddMultibodyPlantSceneGraph(builder, time_step=0.001)
@@ -69,21 +72,11 @@ def build_temp_plant(q0 = None, meshcat = None):
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("base_link", broom),
-        RigidTransform([0.6, 1.2, 0.025])
+        broom_pose,
     )
 
 
     gripper_frame = plant.GetFrameByName("body", wsg)
-
-    # visualize
-    if meshcat:
-        visualizer = MeshcatVisualizer.AddToBuilder(
-            builder,
-            scene_graph,
-            meshcat,
-            MeshcatVisualizerParams(role=Role.kIllustration),
-        )
-
 
     # Finalize plant
     plant.Finalize()
@@ -99,14 +92,15 @@ def build_temp_plant(q0 = None, meshcat = None):
 
 def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
               q0 = None,
-              hold_orientation: bool = False) -> tuple[Trajectory, Trajectory]:
+              hold_orientation: bool = False,
+              broom_pose: RigidTransform|None = None) -> tuple[Trajectory, Trajectory]:
     """
     Returns joint space trajectory for grasping broom, avoiding collisions between
     iiwa, table, and broom (no gripper or cameras yet)
 
     """
 
-    diagram, plant, gripper_frame = build_temp_plant(q0)
+    diagram, plant, gripper_frame = build_temp_plant(q0, broom_pose)
     print(plant)
     diagram_context = diagram.CreateDefaultContext()
     plant_context = plant.GetMyContextFromRoot(diagram_context)

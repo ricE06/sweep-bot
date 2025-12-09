@@ -97,7 +97,7 @@ class MoveToPregrip(TrajectoryGenerator):
 
         X_current = get_gripper_pose(controller)
 
-        traj_gripper, traj_wsg = plan_path(X_current, pregrip, True)
+        traj_gripper, traj_wsg = plan_path(X_current, pregrip, hold_orientation=True, broom_pose=broom_pose)
 
         return traj_gripper, traj_wsg
 
