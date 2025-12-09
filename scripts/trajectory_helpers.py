@@ -62,7 +62,7 @@ class PregripToGrip(TrajectoryGenerator):
         finger_states = np.asarray([GripConstants.opened, GripConstants.opened, GripConstants.closed]).reshape(1, -1)
         angle = compute_broom_grasp_angle(broom_pose, robot_pos)
         pregrip = get_broom_pregrip(broom_pose, angle)
-        grip = get_broom_grip(broom_pose, angle)
+        grip = get_broom_grip(broomarange_pose, angle)
         gripper_poses = [pregrip, grip, grip]
         times = [0, self.trajectory_time/2, self.trajectory_time]
         traj_gripper, traj_wsg = make_trajectory(gripper_poses, finger_states, times)
@@ -107,7 +107,7 @@ reachable_max = (2, 2.2)
 startable_min = (-2, 2)
 startable_max = (2, 2.2)
 
-def sweep_to_trajectory(inp: list[tuple[float, float]], broom_start_pose: RigidTransform, robot_center: ndarray):
+def sweep_to_trajectory(inp: list[tuple[float, float]], broom_start_pose: RigidTransform, robot_center: np.ndarray):
     broom_height = broom_start_pose.translation()[2]
     last_angle = broom_start_pose.rotation().ToRollPitchYaw().yaw_angle()
     grasp_angle = compute_broom_grasp_angle(broom_start_pose, robot_center)
@@ -145,5 +145,5 @@ class ManipulateBroom(TrajectoryGenerator):
         sweep = self.sweep_generator.find_sweep(point_set)
         poses = sweep_to_trajectory(sweep, broom_pose, robot_center)
         sample_times = [float(i*self.time_per_step) for i in range(len(poses))]
-        wsg_poses = np.array([GripConstants.closed]*len(poses))
+        wsg_poses = np.array([GripConstants.closed]*len(poses)).reshape(1, -1)
         return make_trajectory(poses, wsg_poses, sample_times)

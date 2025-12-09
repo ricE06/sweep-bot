@@ -2,9 +2,15 @@ import numpy as np
 from pydrake.all import (
         BasicVector,
         Context,
+        DerivativeTrajectory,
+        DiscreteUpdateEvent,
+        DiscreteValues,
         Diagram,
         MultibodyPlant,
         LeafSystem,
+        Trajectory,
+        WitnessFunction,
+        WitnessFunctionDirection
 )
 
 from .point_cloud import get_point_cloud
@@ -36,76 +42,60 @@ from .trajectory_helpers import TrajectoryGenerator, ManipulateBroom
 # implement a phase that moves the broom back after a sweep
 # call the point clouds sampling to determine the broom base poses
 
+
 class MetaController(LeafSystem):
     """
     Controller that provides commands to the iiwa
     depending on where in the simulation we are in.
     """
 
-    PHASE_OPT      = 0
-    PHASE_PREGRIP  = 1
-    PHASE_SWEEP    = 2
-    PHASE_RETURN   = 3
+    PHASE_OPT = 0
+    PHASE_PREGRIP = 1
+    PHASE_SWEEP = 2
+    PHASE_RETURN = 3
 
-    def __init__(self,
-                 plant: MultibodyPlant,
-                 station,
-                 diagram,
-                 traj_opt,
-                 traj_pregrip_to_grip,
-                 traj_sweep,
-                 traj_return=None):
+    diagram: Diagram = None
+    context: Context = None
+    plant_context: Context = None
+
+    def __init__(self, plant: MultibodyPlant, station):
 
         super().__init__()
 
         # for the various helper classes to use
-        self.diagram = diagram
         self.plant = plant
         self.station = station
-        self.context = diagram.CreateDefaultContext()
-        self.plant_context = plant.GetMyContextFromRoot(self.context)
         # self.station_context = station.CreateDefaultContext()
         self.base = plant.GetBodyByName("base", plant.GetModelInstanceByName('iiwa'))
         self.body = plant.GetBodyByName("handle_link")
         self.gripper = plant.GetBodyByName("body", plant.GetModelInstanceByName("wsg"))
 
+        self._nq = 7
+
+        self._phase_idx = self.DeclareDiscreteState(1)
+        self._last_traj_end_time = self.DeclareDiscreteState(1)
+
+        # Concatenate joint positions, velocities and wsg to be fed into Demultiplexer
+        self.DeclareVectorOutputPort(
+            "position_and_wsg",
+            BasicVector(2*self._nq + 1),
+            self.CalcOutput
+        )
+
+        self.DeclarePerStepDiscreteUpdateEvent(self.UpdateTrajectory)
+
+    def add_diagram(self, diagram: Diagram):
+        self.diagram = diagram
+        self.context = diagram.CreateDefaultContext()
+        self.plant_context = self.plant.GetMyContextFromRoot(self.context)
+
         # link camera
         print(get_point_cloud(self))
         ManipulateBroom().trajectory(self)
-        return
 
-        self._nq = plant.num_positions()
-
-        # Store trajectories
-        self._traj = {
-            self.PHASE_OPT: traj_opt,
-            self.PHASE_PREGRIP: traj_pregrip_to_grip,
-            self.PHASE_SWEEP: traj_sweep,
-            self.PHASE_RETURN: traj_return,
-        }
-
-        # state vars:
-        # 1. Phase index (discrete integer)
-        self._phase_idx = self.DeclareDiscreteState(1)
-        # 2. Local time within the phase
-        self._phase_time = self.DeclareDiscreteState(1)
-
-        # Input: 1 → request next phase; 0 → do nothing
-        self._advance_port = self.DeclareVectorInputPort(
-            "advance_phase", BasicVector(1)
-        ).get_index()
-        # Output: desired joint position
-        self.DeclareVectorOutputPort(
-            "position_command",
-            BasicVector(self._nq),
-            self.CalcPosOutput
-        )
-
-        # Update handler (discrete time step)
-        self.DeclarePeriodicDiscreteUpdateEvent(
-            period_sec=0.001,
-            handler=self.DoUpdate
-        )
+    def UpdateTrajectory(self, context: Context, values: DiscreteValues):
+        time = context.get_time()
+        print(f'called at time {time}')
 
     #UPDATE LOOP (state machine)
     def DoUpdate(self, context, state):
@@ -137,11 +127,18 @@ class MetaController(LeafSystem):
         state.get_mutable_discrete_state(self._phase_idx).set_value([phase])
         state.get_mutable_discrete_state(self._phase_time).set_value([t_local])
 
-    def CalcPosOutput(self, context, output):
+    def Timer(self, context: Context):
+        cur_time = context.get_time()
+        end_time = context.get_discrete_state(int(self._last_traj_end_time))[0]
+        return end_time - cur_time
+
+    def CalcOutput(self, context, output):
         phase = int(context.get_discrete_state(self._phase_idx).get_value()[0])
         t_local = context.get_discrete_state(self._phase_time).get_value()[0]
 
-        traj = self._traj.get(phase, None)
+        traj: Trajectory = self._traj.get(phase, None)
+        # traj_deriv = self._traj_deriv.get(phase, None)
+        traj_deriv = None
 
         if traj is None:
             # If no return trajectory → hold last pose of sweep
@@ -150,12 +147,12 @@ class MetaController(LeafSystem):
 
         t_local = np.clip(t_local, traj.start_time(), traj.end_time())
         q_des = traj.value(t_local).ravel()
+        q_dot_des = traj_deriv.value(t_local).ravel()
 
-        output.SetFromVector(q_des)
+        output.SetFromVector(np.concat(q_des, q_dot_des))
 
-    def generate_sweep():
-        pass
 
 # use a state machine to keep track of logic
 # diffik to get joint traj from broom traj
 # weld broom to robot to test sweeping
+
