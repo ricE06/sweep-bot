@@ -1,5 +1,8 @@
+from dataclasses import dataclass
+from typing import Optional
 import numpy as np
 from pydrake.all import (
+        AbstractValue,
         BasicVector,
         Context,
         DerivativeTrajectory,
@@ -14,7 +17,7 @@ from pydrake.all import (
 )
 
 from .point_cloud import get_point_cloud
-from .trajectory_helpers import TrajectoryGenerator, ManipulateBroom
+from .trajectory_helpers import TrajectoryGenerator, MoveToPregrip, PregripToGrip, ManipulateBroom
 
 # THE FOLLOWING IS LEFT TO DO:
 #
@@ -42,6 +45,11 @@ from .trajectory_helpers import TrajectoryGenerator, ManipulateBroom
 # implement a phase that moves the broom back after a sweep
 # call the point clouds sampling to determine the broom base poses
 
+@dataclass
+class Trajectories:
+    gripper_pos: Trajectory
+    gripper_vel: Trajectory
+    wsg: Trajectory
 
 class MetaController(LeafSystem):
     """
@@ -49,9 +57,9 @@ class MetaController(LeafSystem):
     depending on where in the simulation we are in.
     """
 
-    PHASE_OPT = 0
-    PHASE_PREGRIP = 1
-    PHASE_SWEEP = 2
+    START = 0
+    PREGRIP = 1
+    GRIP = 2
     PHASE_RETURN = 3
 
     diagram: Diagram = None
@@ -73,15 +81,21 @@ class MetaController(LeafSystem):
         self._nq = 7
 
         self._phase_idx = self.DeclareDiscreteState(1)
+        self._last_traj_start_time = self.DeclareDiscreteState(1)
         self._last_traj_end_time = self.DeclareDiscreteState(1)
+
+        # trajectory and first derivative and wsg
+        # type Trajectories | None
+        self._cur_sweep_trajectory = self.DeclareAbstractState(AbstractValue.Make(None))
 
         # Concatenate joint positions, velocities and wsg to be fed into Demultiplexer
         self.DeclareVectorOutputPort(
             "position_and_wsg",
             BasicVector(2*self._nq + 1),
-            self.CalcOutput
+            self.CalcSysOutput
         )
 
+        self.DeclareInitializationDiscreteUpdateEvent(self.UpdateTrajectory)
         self.DeclarePerStepDiscreteUpdateEvent(self.UpdateTrajectory)
 
     def add_diagram(self, diagram: Diagram):
@@ -95,13 +109,62 @@ class MetaController(LeafSystem):
 
     def UpdateTrajectory(self, context: Context, values: DiscreteValues):
         time = context.get_time()
-        print(f'called at time {time}')
+        end_time = context.get_discrete_state(int(self._last_traj_end_time)).get_value()[0]
+        if end_time > time:
+            return
+        phase_vec = context.get_mutable_discrete_state(int(self._phase_idx))
+        phase = phase_vec.get_value()[0]
+
+        if phase == self.START:
+            print(f'called at time {time}')
+            print('start!')
+            traj_gen = MoveToPregrip()
+            phase_vec.SetFromVector([self.PREGRIP]) # will be at pregrip once done
+            pass
+        elif phase == self.PREGRIP:
+            print(f'called at time {time}')
+            print('moved to pregrip!')
+            pass
+        elif phase == self.GRIP:
+            pass
+
+        trajectory, wsg_trajectory = traj_gen.trajectory(self)
+        traj_deriv = trajectory.MakeDerivative(1)
+        trajectories = Trajectories(trajectory, traj_deriv, wsg_trajectory)
+        traj_state = context.get_mutable_abstract_state(int(self._cur_sweep_trajectory))
+        traj_state.set_value(trajectories)
+
+        # START -> trajectory opt to pregrip
+        # found pregrip -> trajectory to grip
+        # grip -> trajectory to manipulate broom
+        # finished manipulating -> trajectory to pregrip
+
+    def CalcSysOutput(self, context: Context, output: BasicVector):
+        phase = int(context.get_discrete_state(self._phase_idx).get_value()[0])
+        time = context.get_time()
+        start_time = context.get_discrete_state(int(self._last_traj_start_time)).get_value()[0]
+        rel_time = time - start_time
+
+        trajectories: Trajectories = context.get_abstract_state(int(self._cur_sweep_trajectory)).get_value()
+        if trajectories is None:
+            # has not initialized yet
+            print(f'empty trajectories at time {time}')
+            output.SetFromVector(np.zeros(15,))
+            return
+
+        pos = trajectories.gripper_pos
+        vel = trajectories.gripper_vel
+        t_local = np.clip(rel_time, pos.start_time(), pos.end_time())
+        q_des = pos.value(t_local).ravel()
+        q_dot_des = vel.value(t_local).ravel()
+        wsg_des = trajectories.wsg.value(t_local).ravel()
+
+        output.SetFromVector(np.concat(q_des, q_dot_des, wsg_des))
 
     #UPDATE LOOP (state machine)
     def DoUpdate(self, context, state):
 
         phase = int(context.get_discrete_state(self._phase_idx).get_value()[0])
-        t_local = context.get_discrete_state(self._phase_time).get_value()[0]
 
         advance = 0
         if self.get_input_port(self._advance_port).HasValue(context):
@@ -126,30 +189,6 @@ class MetaController(LeafSystem):
         # Write back updated states
         state.get_mutable_discrete_state(self._phase_idx).set_value([phase])
         state.get_mutable_discrete_state(self._phase_time).set_value([t_local])
-
-    def Timer(self, context: Context):
-        cur_time = context.get_time()
-        end_time = context.get_discrete_state(int(self._last_traj_end_time))[0]
-        return end_time - cur_time
-
-    def CalcOutput(self, context, output):
-        phase = int(context.get_discrete_state(self._phase_idx).get_value()[0])
-        t_local = context.get_discrete_state(self._phase_time).get_value()[0]
-
-        traj: Trajectory = self._traj.get(phase, None)
-        # traj_deriv = self._traj_deriv.get(phase, None)
-        traj_deriv = None
-
-        if traj is None:
-            # If no return trajectory → hold last pose of sweep
-            traj = self._traj[self.PHASE_SWEEP]
-            t_local = traj.end_time()
-
-        t_local = np.clip(t_local, traj.start_time(), traj.end_time())
-        q_des = traj.value(t_local).ravel()
-        q_dot_des = traj_deriv.value(t_local).ravel()
-
-        output.SetFromVector(np.concat(q_des, q_dot_des))
 
 
 # use a state machine to keep track of logic

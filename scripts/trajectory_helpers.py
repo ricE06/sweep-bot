@@ -107,6 +107,9 @@ reachable_max = (2, 2.2)
 startable_min = (-2, 2)
 startable_max = (2, 2.2)
 
+def get_sweep(controller: MetaController):
+    pass
+
 def sweep_to_trajectory(inp: list[tuple[float, float]], broom_start_pose: RigidTransform, robot_center: np.ndarray):
     broom_height = broom_start_pose.translation()[2]
     last_angle = broom_start_pose.rotation().ToRollPitchYaw().yaw_angle()
