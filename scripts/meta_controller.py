@@ -80,9 +80,10 @@ class MetaController(LeafSystem):
 
         self._nq = 7
 
-        self._phase_idx = self.DeclareDiscreteState(1)
-        self._last_traj_start_time = self.DeclareDiscreteState(1)
-        self._last_traj_end_time = self.DeclareDiscreteState(1)
+        self._discrete_state = self.DeclareDiscreteState(3)
+        self._phase_idx = self._discrete_state
+        self._last_traj_start_time = int(self._discrete_state) + 1
+        self._last_traj_end_time = int(self._discrete_state) + 2
 
         # trajectory and first derivative and wsg
         # type Trajectories | None
@@ -95,7 +96,7 @@ class MetaController(LeafSystem):
             self.CalcSysOutput
         )
 
-        self.DeclareInitializationDiscreteUpdateEvent(self.UpdateTrajectory)
+        # self.DeclareInitializationDiscreteUpdateEvent(self.UpdateTrajectory)
         self.DeclarePerStepDiscreteUpdateEvent(self.UpdateTrajectory)
 
     def add_diagram(self, diagram: Diagram):
@@ -109,9 +110,14 @@ class MetaController(LeafSystem):
 
     def UpdateTrajectory(self, context: Context, values: DiscreteValues):
         time = context.get_time()
-        end_time = context.get_discrete_state(int(self._last_traj_end_time)).get_value()[0]
+        state = context.get_mutable_discrete_state(int(self._discrete_state))
+        phase, start_time, end_time = state.get_value()
+        print(f'{end_time=}')
         if end_time > time:
             return
+
+        values_vec = values.get_mutable_vector()
+
         phase_vec = context.get_mutable_discrete_state(int(self._phase_idx))
         phase = phase_vec.get_value()[0]
 
@@ -119,12 +125,10 @@ class MetaController(LeafSystem):
             print(f'called at time {time}')
             print('start!')
             traj_gen = MoveToPregrip()
-            phase_vec.SetFromVector([self.PREGRIP]) # will be at pregrip once done
-            pass
+            values_vec.SetAtIndex(int(self._phase_idx), self.PREGRIP) # will be at pregrip once done
         elif phase == self.PREGRIP:
             print(f'called at time {time}')
             print('moved to pregrip!')
-            pass
         elif phase == self.GRIP:
             pass
 
@@ -134,16 +138,26 @@ class MetaController(LeafSystem):
         traj_state = context.get_mutable_abstract_state(int(self._cur_sweep_trajectory))
         traj_state.set_value(trajectories)
 
+        print(values_vec)
+        traj_length = trajectory.end_time()
+        print(f'will end at: {time+traj_length}')
+        values_vec.SetAtIndex(int(self._last_traj_start_time), time)
+        values_vec.SetAtIndex(int(self._last_traj_end_time), time+traj_length)
+        # start_time_port = context.get_mutable_discrete_state(int(self._last_traj_start_time))
+        # start_time_port.set_value(np.array([time]))
+        # end_time_port.set_value(np.array([time+traj_length]))
+
         # START -> trajectory opt to pregrip
         # found pregrip -> trajectory to grip
         # grip -> trajectory to manipulate broom
         # finished manipulating -> trajectory to pregrip
 
     def CalcSysOutput(self, context: Context, output: BasicVector):
-        phase = int(context.get_discrete_state(self._phase_idx).get_value()[0])
         time = context.get_time()
-        start_time_port = context.get_mutable_discrete_state(int(self._last_traj_start_time))
-        start_time = start_time_port.get_value()[0]
+        # start_time_port = context.get_mutable_discrete_state(int(self._last_traj_start_time))
+        # start_time = start_time_port.get_value()[0]
+        state = context.get_mutable_discrete_state(int(self._discrete_state))
+        phase, start_time, end_time = state.get_value()
         rel_time = time - start_time
 
         trajectories: Trajectories = context.get_abstract_state(int(self._cur_sweep_trajectory)).get_value()
@@ -162,12 +176,6 @@ class MetaController(LeafSystem):
         q_dot_des = np.array(vel.value(t_local).ravel()).reshape(1, -1).reshape(7,)
         wsg_val = trajectories.wsg.value(t_local).ravel()[0]
         wsg_des = np.array([float(wsg_val)])
-
-        start_time_port.SetFromVector(np.array([time]))
-
-        end_time_port = context.get_mutable_discrete_state(int(self._last_traj_end_time))
-        traj_length = pos.end_time()
-        end_time_port.SetFromVector(np.array([time+traj_length]))
 
         output.SetFromVector(np.concat([q_des, q_dot_des, wsg_des]))
 
