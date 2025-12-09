@@ -62,7 +62,7 @@ class PregripToGrip(TrajectoryGenerator):
         finger_states = np.asarray([GripConstants.opened, GripConstants.opened, GripConstants.closed]).reshape(1, -1)
         angle = compute_broom_grasp_angle(broom_pose, robot_pos)
         pregrip = get_broom_pregrip(broom_pose, angle)
-        grip = get_broom_grip(broomarange_pose, angle)
+        grip = get_broom_grip(broom_pose, angle)
         gripper_poses = [pregrip, grip, grip]
         times = [0, self.trajectory_time/2, self.trajectory_time]
         traj_gripper, traj_wsg = make_trajectory(gripper_poses, finger_states, times)

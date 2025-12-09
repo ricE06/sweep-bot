@@ -112,7 +112,6 @@ class MetaController(LeafSystem):
         time = context.get_time()
         state = context.get_mutable_discrete_state(int(self._discrete_state))
         phase, start_time, end_time = state.get_value()
-        print(f'{end_time=}')
         if end_time > time:
             return
 
@@ -127,6 +126,7 @@ class MetaController(LeafSystem):
             traj_gen = MoveToPregrip()
             values_vec.SetAtIndex(int(self._phase_idx), self.PREGRIP) # will be at pregrip once done
         elif phase == self.PREGRIP:
+            traj_gen = PregripToGrip()
             print(f'called at time {time}')
             print('moved to pregrip!')
         elif phase == self.GRIP:
