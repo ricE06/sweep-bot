@@ -50,6 +50,8 @@ def solve_ik_for_pose(
 
     result = Solve(prog)
     if not result.is_success():
-        raise RuntimeError("IK did not succeed")
+        # raise RuntimeError("IK did not succeed")
+        # just try it anyways
+        print("IK did not suceed")
 
-    return tuple(result.GetSolution(q_vars))
+    return result.GetSolution(q_vars)

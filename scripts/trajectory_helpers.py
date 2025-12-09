@@ -52,11 +52,14 @@ def convert_to_angles(controller: MetaController,
         pose = pose_trajectory.value(time)
         trans = RigidTransform(RollPitchYaw(pose[3], pose[4], pose[5]), pose[0:3])
         q_next = solve_ik_for_pose(controller.plant, trans, q_frames[-1])
-        q_frames.apppend(q_next)
+        q_frames.append(q_next)
 
+    q_frames = np.array(q_frames).T
     # closed on both ends, fencepost
     times = np.linspace(0, end_time, num=num_divisions+1)
-    return PiecewisePose.MakeLinear(times, q_frames)
+    print(times.shape)
+    print(len(q_frames))
+    return PiecewisePolynomial.FirstOrderHold(times, q_frames)
 
 def get_broom_pose(controller: MetaController) -> RigidTransform:
     return controller.plant.EvalBodyPoseInWorld(controller.plant_context, controller.body)
