@@ -10,7 +10,9 @@ from pydrake.all import (
         DiscreteUpdateEvent,
         DiscreteValues,
         Diagram,
+        InputPort,
         Integrator,
+        OutputPort,
         MultibodyPlant,
         LeafSystem,
         RigidTransform,
@@ -46,13 +48,14 @@ def make_pinv_system(traj_v_src: TrajectorySource, q0: np.ndarray):
     pinv_control: PseudoInverseController = builder.AddSystem(PseudoInverseController(plant))
     integrator = builder.AddSystem(Integrator(7))
 
+    builder.AddSystem(traj_v_src)
     builder.Connect(traj_v_src.get_output_port(), pinv_control.V_G_port)
     builder.Connect(pinv_control.get_output_port(),
                     integrator.get_input_port())
 
     diagram = builder.Build()
     sim = Simulator(diagram)
-    return sim
+    return sim, integrator.get_output_port(), pinv_control.get_output_port()
 
 class MetaController(LeafSystem):
     """
@@ -117,9 +120,10 @@ class MetaController(LeafSystem):
         ManipulateBroom().trajectory(self)
 
     def UpdateTrajectory(self, context: Context, values: DiscreteValues):
+        values_vec = values.get_mutable_vector()
         time = context.get_time()
         state = context.get_mutable_discrete_state(int(self._discrete_state))
-        phase, start_time, end_time = state.get_value()
+        phase, start_time, end_time, _ = state.get_value()
         if end_time > time:
             return
 
@@ -150,9 +154,9 @@ class MetaController(LeafSystem):
         if use_pinv:
             iiwa = self.plant.GetModelInstanceByName('iiwa')
             q0 = self.plant.GetPositions(self.plant_context, iiwa)
-            pinv_sim = make_pinv_system(TrajectorySource(traj_deriv), q0)
+            pinv_sim, q_port, q_dot_port = make_pinv_system(TrajectorySource(traj_deriv), q0)
             sim_state = context.get_mutable_abstract_state(int(self._cur_pinv_simulator))
-            sim_state.set_value(pinv_sim)
+            sim_state.set_value((pinv_sim, q_port, q_dot_port))
 
         print(values_vec)
         traj_length = trajectory.end_time()
@@ -172,7 +176,7 @@ class MetaController(LeafSystem):
         # start_time_port = context.get_mutable_discrete_state(int(self._last_traj_start_time))
         # start_time = start_time_port.get_value()[0]
         state = context.get_mutable_discrete_state(int(self._discrete_state))
-        phase, start_time, end_time = state.get_value()
+        phase, start_time, end_time, traj_mode = state.get_value()
         rel_time = time - start_time
 
         trajectories: Trajectories = context.get_abstract_state(int(self._cur_sweep_trajectory)).get_value()
@@ -182,15 +186,31 @@ class MetaController(LeafSystem):
             output.SetFromVector(np.zeros(15,))
             return
 
-        pos = trajectories.gripper_pos
-        vel = trajectories.gripper_vel
-        t_local = np.clip(rel_time, pos.start_time(), pos.end_time())
+        if traj_mode == self.TRAJ_Q:
+            pos = trajectories.gripper_pos
+            vel = trajectories.gripper_vel
+            t_local = np.clip(rel_time, pos.start_time(), pos.end_time())
 
-        # don't ask
-        q_des = np.array(pos.value(t_local).ravel()).reshape(1, -1).reshape(7,)
-        q_dot_des = np.array(vel.value(t_local).ravel()).reshape(1, -1).reshape(7,)
-        wsg_val = trajectories.wsg.value(t_local).ravel()[0]
-        wsg_des = np.array([float(wsg_val)])
+            # don't ask
+            q_des = np.array(pos.value(t_local).ravel()).reshape(1, -1).reshape(7,)
+            q_dot_des = np.array(vel.value(t_local).ravel()).reshape(1, -1).reshape(7,)
+            wsg_val = trajectories.wsg.value(t_local).ravel()[0]
+            wsg_des = np.array([float(wsg_val)])
+
+        else:
+            sim_state: tuple[Simulator, OutputPort, OutputPort] = context.get_abstract_state(int(self._cur_pinv_simulator)).get_value()
+            if sim_state is None:
+                print('empty sim')
+                output.SetFromVector(np.zeros(15,))
+                return
+
+            sim, q_port, q_dot_port = sim_state
+            sim.AdvanceTo(rel_time)
+            context = sim.get_context()
+            q_des = q_port.Eval(context)
+            q_dot_des = q_dot_port.Eval(context)
+            wsg_val = trajectories.wsg.value(t_local).ravel()[0]
+            wsg_des = np.array([float(wsg_val)])
 
         output.SetFromVector(np.concat([q_des, q_dot_des, wsg_des]))
 

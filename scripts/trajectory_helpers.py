@@ -95,14 +95,18 @@ class PregripToGrip(TrajectoryGenerator):
         times = [0, self.trajectory_time/2, self.trajectory_time]
         traj_gripper, traj_wsg = make_trajectory(gripper_poses, finger_states, times)
         
+        """
         end_time = traj_gripper.end_time()
         for i in range(101):
             pose = traj_gripper.GetPose(end_time * i / 100)
             print(pose.translation())
             AddMeshcatTriad(controller.meshcat, f'{i}', X_PT=pose)
+        """
 
-        traj_gripper_q = convert_to_angles(controller, traj_gripper) 
-        return traj_gripper_q, traj_wsg
+        # traj_gripper_q = convert_to_angles(controller, traj_gripper) 
+        # return traj_gripper_q, traj_wsg
+        # these are poses, will be converted to q and qdot by metacontroller
+        return traj_gripper, traj_wsg
 
 class GripToPregrip(TrajectoryGenerator):
     pass
