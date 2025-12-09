@@ -47,8 +47,8 @@ class MetaController(LeafSystem):
     PHASE_SWEEP    = 2
     PHASE_RETURN   = 3
 
-    def __init__(self, 
-                 plant: MultibodyPlant, 
+    def __init__(self,
+                 plant: MultibodyPlant,
                  station,
                  diagram,
                  traj_opt,
@@ -67,6 +67,7 @@ class MetaController(LeafSystem):
         # self.station_context = station.CreateDefaultContext()
         self.base = plant.GetBodyByName("base", plant.GetModelInstanceByName('iiwa'))
         self.body = plant.GetBodyByName("handle_link")
+        self.gripper = plant.GetBodyByName("body", plant.GetModelInstanceByName("wsg"))
 
         # link camera
         print(get_point_cloud(self))

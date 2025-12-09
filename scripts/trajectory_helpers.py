@@ -12,6 +12,8 @@ from pydrake.all import (
         RollPitchYaw,
         Trajectory,
 )
+from scripts.grasp_broom import plan_path
+
 # so we can have type annotaitons but prevent circular imports
 # https://stackoverflow.com/questions/39740632/python-type-hinting-without-cyclic-imports
 from typing import TYPE_CHECKING
@@ -39,6 +41,9 @@ def get_broom_pose(controller: MetaController) -> RigidTransform:
 
 def get_robot_pose(controller: MetaController) -> RigidTransform:
     return controller.plant.EvalBodyPoseInWorld(controller.plant_context, controller.base)
+
+def get_gripper_pose(controller: MetaController) -> RigidTransform:
+    return controller.plant.EvalBodyPoseInWorld(controller.plant_context, controller.gripper)
 
 class TrajectoryGenerator(ABC):
 
@@ -70,16 +75,11 @@ class Return(TrajectoryGenerator):
 
     def trajectory(self, controller: MetaController) -> tuple[Trajectory, Trajectory]:
 
-        # placeholder: figure out how to get pos after sweep
-        current_pose = RigidTransform(RollPitchYaw(np.pi, 0, 0), [0, 1.0, 0.5])
+        current_pose = get_gripper_pose(controller)
 
         poses = [current_pose, self.reset_pose, self.reset_pose]
 
-        finger_values = np.asarray([
-            [GripConstants.closed, GripConstants.closed, GripConstants.closed],
-            [GripConstants.opened, GripConstants.opened, GripConstants.opened],
-            [GripConstants.opened, GripConstants.opened, GripConstants.opened],
-        ]).reshape(3, -1)
+        finger_values = np.asarray([GripConstants.closed, GripConstants.opened, GripConstants.opened]).reshape(1, -1)
 
         times = [0, self.trajectory_time/2, self.trajectory_time]
 
@@ -87,7 +87,19 @@ class Return(TrajectoryGenerator):
         return traj_gripper, traj_wsg
 
 class MoveToPregrip(TrajectoryGenerator):
-    pass
+
+    def trajectory(self, controller: MetaController):
+        broom_pose = get_broom_pose(controller)
+        robot_pos = get_robot_pose(controller).translation()
+        angle = compute_broom_grasp_angle(broom_pose, robot_pos)
+
+        pregrip = get_broom_pregrip(broom_pose, angle)
+
+        X_current = get_gripper_pose(controller)
+
+        traj_gripper, traj_wsg = plan_path(X_current, pregrip, True)
+
+        return traj_gripper, traj_wsg
 
 target = (0, 0)
 reachable_min = (-2, 0)
@@ -103,8 +115,8 @@ def sweep_to_trajectory(inp: list[tuple[float, float]], broom_start_pose: RigidT
     for a, b in pairwise(inp):
         diff = (b[0] - a[0], b[1] - a[1])
         angle = np.atan2(diff[1], diff[0])
-        pose1 = RigidTransform(RollPitchYaw(0, 0, last_angle), np.array([a[0], a[1], broom_height])) 
-        pose2 = RigidTransform(RollPitchYaw(0, 0, angle), np.array([b[0], b[1], broom_height])) 
+        pose1 = RigidTransform(RollPitchYaw(0, 0, last_angle), np.array([a[0], a[1], broom_height]))
+        pose2 = RigidTransform(RollPitchYaw(0, 0, angle), np.array([b[0], b[1], broom_height]))
         last_angle = angle
         poses.extend([get_broom_grip(pose1, grasp_angle), get_broom_grip(pose2, grasp_angle)])
     return poses
@@ -135,4 +147,3 @@ class ManipulateBroom(TrajectoryGenerator):
         sample_times = [float(i*self.time_per_step) for i in range(len(poses))]
         wsg_poses = np.array([GripConstants.closed]*len(poses))
         return make_trajectory(poses, wsg_poses, sample_times)
-
