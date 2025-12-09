@@ -1,5 +1,6 @@
 import numpy as np
 from abc import ABC
+from itertools import pairwise
 from pydrake.all import (
         BasicVector,
         Context,
@@ -93,13 +94,31 @@ reachable_min = (-2, 0)
 reachable_max = (2, 2.2)
 startable_min = (-2, 2)
 startable_max = (2, 2.2)
+
+def sweep_to_trajectory(inp: list[tuple[float, float]], broom_start_pose: RigidTransform, robot_center: ndarray):
+    broom_height = broom_start_pose.translation()[2]
+    last_angle = broom_start_pose.rotation().ToRollPitchYaw().yaw_angle()
+    grasp_angle = compute_broom_grasp_angle(broom_start_pose, robot_center)
+    poses = []
+    for a, b in pairwise(inp):
+        diff = (b[0] - a[0], b[1] - a[1])
+        angle = np.atan2(diff[1], diff[0])
+        pose1 = RigidTransform(RollPitchYaw(0, 0, last_angle), np.array([a[0], a[1], broom_height])) 
+        pose2 = RigidTransform(RollPitchYaw(0, 0, angle), np.array([b[0], b[1], broom_height])) 
+        last_angle = angle
+        poses.extend([get_broom_grip(pose1, grasp_angle), get_broom_grip(pose2, grasp_angle)])
+    return poses
+
 class ManipulateBroom(TrajectoryGenerator):
 
     sweep_generator = SweepGenerator(target, reachable_min, reachable_max, startable_min, startable_max)
     num_point_samples = 200
+    time_per_step = 1
 
     def trajectory(self, controller: MetaController) -> tuple[Trajectory, Trajectory]:
         point_cloud = get_point_cloud(controller)
+        robot_center = get_robot_pose(controller).translation()
+        broom_pose = get_broom_pose(controller)
 
         point_cloud_xy = point_cloud[0:2, :]
         num_points = len(point_cloud_xy)
@@ -112,7 +131,8 @@ class ManipulateBroom(TrajectoryGenerator):
             point_set.add((point_cloud_xy[i, 0], point_cloud_xy[i, 1]))
 
         sweep = self.sweep_generator.find_sweep(point_set)
-        print(sweep)
+        poses = sweep_to_trajectory(sweep, broom_pose, robot_center)
+        sample_times = [float(i*self.time_per_step) for i in range(len(poses))]
+        wsg_poses = np.array([GripConstants.closed]*len(poses))
+        return make_trajectory(poses, wsg_poses, sample_times)
 
-traj = [PregripToGrip, Return, MoveToPregrip, ]
-traj[2].trajectory()

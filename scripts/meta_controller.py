@@ -8,6 +8,7 @@ from pydrake.all import (
 )
 
 from .point_cloud import get_point_cloud
+from .trajectory_helpers import TrajectoryGenerator, ManipulateBroom
 
 # THE FOLLOWING IS LEFT TO DO:
 #
@@ -69,6 +70,7 @@ class MetaController(LeafSystem):
 
         # link camera
         print(get_point_cloud(self))
+        ManipulateBroom().trajectory(self)
         return
 
         self._nq = plant.num_positions()

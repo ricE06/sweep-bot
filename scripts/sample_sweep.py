@@ -69,9 +69,9 @@ class SweepGenerator:
             total_ct += 1
         return total_score / total_ct
 
-    def find_sweep(self, point_cloud, num_samples=100):
+    def find_sweep(self, point_cloud, num_samples=100) -> list[tuple[float, float]]:
         best_score = None
-        best_traj = None
+        best_traj = []
         for _ in range(100):
             traj = self._generate_sweep_sampling()
             score = self._compute_score(traj, point_cloud)
