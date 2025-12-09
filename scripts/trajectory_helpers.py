@@ -8,6 +8,7 @@ from pydrake.all import (
         PiecewisePolynomial,
         PiecewisePose,
         RigidTransform,
+        RollPitchYaw,
         Trajectory,
 )
 # so we can have type annotaitons but prevent circular imports
@@ -19,7 +20,7 @@ else:
     MetaController = None
 
 from .utils import GripConstants
-from .broom_utils import get_broom_grip, get_broom_pregrip, compute_broom_grasp_angle 
+from .broom_utils import get_broom_grip, get_broom_pregrip, compute_broom_grasp_angle
 from .point_cloud import get_point_cloud
 from .sample_sweep import SweepGenerator
 
@@ -62,7 +63,27 @@ class PregripToGrip(TrajectoryGenerator):
         return traj_gripper, traj_wsg
 
 class Return(TrajectoryGenerator):
-    pass
+    trajectory_time = 2
+
+    reset_pose = RigidTransform(RollPitchYaw(np.pi, 0, 0), [0, 1.0, 0.5])
+
+    def trajectory(self, controller: MetaController) -> tuple[Trajectory, Trajectory]:
+
+        # placeholder: figure out how to get pos after sweep
+        current_pose = RigidTransform(RollPitchYaw(np.pi, 0, 0), [0, 1.0, 0.5])
+
+        poses = [current_pose, self.reset_pose, self.reset_pose]
+
+        finger_values = np.asarray([
+            [GripConstants.closed, GripConstants.closed, GripConstants.closed],
+            [GripConstants.opened, GripConstants.opened, GripConstants.opened],
+            [GripConstants.opened, GripConstants.opened, GripConstants.opened],
+        ]).reshape(3, -1)
+
+        times = [0, self.trajectory_time/2, self.trajectory_time]
+
+        traj_gripper, traj_wsg = make_trajectory(poses, finger_values, times)
+        return traj_gripper, traj_wsg
 
 class MoveToPregrip(TrajectoryGenerator):
     pass
@@ -95,4 +116,3 @@ class ManipulateBroom(TrajectoryGenerator):
 
 traj = [PregripToGrip, Return, MoveToPregrip, ]
 traj[2].trajectory()
-
