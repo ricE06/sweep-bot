@@ -49,7 +49,7 @@ def build_temp_plant(q0 = None, meshcat = None):
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("iiwa_link_0", iiwa),
-        RigidTransform(RollPitchYaw(0, 0, 0), [0, 1.6, 0.0])
+        RigidTransform(RollPitchYaw(0, 0, 0), [0, 1.5, 0.0])
     )
 
     wsg = AddWsg(plant, iiwa, welded=True, sphere=True)

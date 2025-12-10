@@ -159,7 +159,7 @@ class MetaController(LeafSystem):
             traj_gen = MoveToStart()
             values_vec.SetAtIndex(int(self._phase_idx), self.PRESWEEP) # will be at presweep once done
         elif phase == self.PRESWEEP:
-            traj_gen = ManipulateBroom()
+            traj_gen = ManipulateBroom(self.meshcat)
             print(f'called at time {time}')
             print('moved to sweep!')
             use_pinv = True
@@ -218,7 +218,9 @@ class MetaController(LeafSystem):
         if trajectories is None:
             # has not initialized yet
             print(f'empty trajectories at time {time}')
-            output.SetFromVector(np.zeros(14,))
+            # plant_context = self.plant.GetMyContextFromRoot(context)
+            pos = self.plant.GetPositions(self.plant_context, self.plant.GetModelInstanceByName('iiwa')).reshape(7,)
+            output.SetFromVector(np.concat([pos, np.zeros(7)]))
             return
 
         if traj_mode == self.TRAJ_Q:
@@ -235,11 +237,14 @@ class MetaController(LeafSystem):
             sim = context.get_abstract_state(int(self._cur_pinv_simulator)).get_value()
             if sim is None:
                 print('empty sim')
-                output.SetFromVector(np.zeros(14,))
+                pos = self.plant.GetPositions(self.plant_context, self.plant.GetModelInstanceByName('iiwa')).reshape(7,)
+                output.SetFromVector(np.concat([pos, np.zeros(7)]))
                 return
 
-            sim.AdvanceTo(rel_time)
+            # print('time', rel_time)
             context = sim.get_context()
+            rel_time = max(rel_time, context.get_time())
+            sim.AdvanceTo(rel_time)
             q_des = sim.get_system().GetOutputPort('q').Eval(context)
             q_dot_des = sim.get_system().GetOutputPort('q_dot').Eval(context)
 

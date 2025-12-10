@@ -59,7 +59,7 @@ def load_scenario(use_cubes=True, use_position=False, use_weld=False, q0=None):
     with open('./scripts/camera.yaml', 'r') as f:
         camera_string = f.read()
     if use_cubes:
-        scenario_string += add_cubes(20, -1, +1, 0.5, 1)
+        scenario_string += add_cubes(20, -0.5, 0.5, 0.3, 0.7)
     scenario_string += '\n' + camera_string
     if use_position:
         scenario_string += """

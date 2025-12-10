@@ -1,14 +1,14 @@
 <?xml version="1.0"?>
 <sdf version="1.7">
   <model name="broom">
-    <pose>0 0 0 0 0 0</pose>
+    <pose>0 0 1 0 0 0</pose>
 
     <link name="handle_link">
       <visual name="handle_visual">
         <geometry>
           <cylinder>
             <radius>0.025</radius>
-            <length>0.8</length>
+            <length>0.75</length>
           </cylinder>
         </geometry>
         <pose>0  0.2 0.35 -0.5236 0 0</pose>

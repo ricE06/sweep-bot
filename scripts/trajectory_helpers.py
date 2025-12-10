@@ -4,6 +4,7 @@ from itertools import pairwise
 from pydrake.all import (
         BasicVector,
         Context,
+        Meshcat,
         MultibodyPlant,
         LeafSystem,
         PiecewisePolynomial,
@@ -175,7 +176,7 @@ class MoveToStart(TrajectoryGenerator):
         self.meshcat = meshcat
 
     num_retries = 1
-    start_pose = RigidTransform(RotationMatrix(), np.array([0, 1.1, 0.025]))
+    start_pose = RigidTransform(RotationMatrix(), np.array([0, 0.8, 0.025]))
 
     def trajectory(self, controller: MetaController) -> Trajectory:
         broom_pose = get_broom_pose(controller)
@@ -196,8 +197,8 @@ class MoveToStart(TrajectoryGenerator):
 target = (0, 0)
 reachable_min = (-2, 0)
 reachable_max = (2, 2.2)
-startable_min = (-2, 2)
-startable_max = (2, 2.2)
+startable_min = (-0.6, 0.8)
+startable_max = (0.6, 0.81)
 
 def get_sweep(controller: MetaController):
     pass
@@ -210,13 +211,16 @@ def sweep_to_trajectory(inp: list[tuple[float, float]], broom_start_pose: RigidT
     for a, b in pairwise(inp):
         diff = (b[0] - a[0], b[1] - a[1])
         angle = np.atan2(diff[1], diff[0])
-        pose1 = RigidTransform(RollPitchYaw(0, 0, last_angle), np.array([a[0], a[1], broom_height]))
-        pose2 = RigidTransform(RollPitchYaw(0, 0, angle), np.array([b[0], b[1], broom_height]))
+        pose1 = RigidTransform(RollPitchYaw(0, 0, last_angle+np.pi), np.array([a[0], a[1], broom_height]))
+        pose2 = RigidTransform(RollPitchYaw(0, 0, angle+np.pi), np.array([b[0], b[1], broom_height]))
         last_angle = angle
         poses.extend([pose1, pose2])
     return poses
 
 class ManipulateBroom(TrajectoryGenerator):
+
+    def __init__(self, meshcat: Meshcat | None = None):
+        self.meshcat = meshcat
 
     sweep_generator = SweepGenerator(target, reachable_min, reachable_max, startable_min, startable_max)
     num_point_samples = 200
@@ -239,6 +243,10 @@ class ManipulateBroom(TrajectoryGenerator):
 
         sweep = self.sweep_generator.find_sweep(point_set)
         poses = sweep_to_trajectory(sweep, broom_pose) 
+        if self.meshcat:
+            for i, pose in enumerate(poses):
+                AddMeshcatTriad(self.meshcat, f'sweep_{i}', X_PT = pose)
+
         sample_times = [float(i*self.time_per_step) for i in range(len(poses))]
         return PiecewisePose.MakeLinear(sample_times, poses)
         return make_trajectory(poses, wsg_poses, sample_times)
