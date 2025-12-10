@@ -120,7 +120,7 @@ class PregripToGrip(TrajectoryGenerator):
 
     trajectory_time = 1
 
-    def trajectory(self, controller: MetaController) -> tuple[Trajectory, Trajectory]:
+    def trajectory(self, controller: MetaController) -> tuple[PiecewisePose, Trajectory]:
         broom_pose = get_broom_pose(controller)
         print('broom pose', broom_pose)
         robot_pos = get_robot_pose(controller).translation()

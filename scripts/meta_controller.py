@@ -16,11 +16,14 @@ from pydrake.all import (
         MultibodyPlant,
         LeafSystem,
         RigidTransform,
+        RobotDiagram,
         Simulator,
+        StartMeshcat,
         Trajectory,
         TrajectorySource,
 )
 from manipulation.station import MakeHardwareStation
+from manipulation.meshcat_utils import AddMeshcatTriad
 
 from .point_cloud import get_point_cloud
 from .trajectory_helpers import TrajectoryGenerator, MoveToPregrip, PregripToGrip, ManipulateBroom
@@ -33,29 +36,40 @@ class Trajectories:
     gripper_vel: Trajectory
     wsg: Trajectory
 
-def make_pinv_system(traj_v_src: TrajectorySource, q0: np.ndarray):
+def make_pinv_system(traj_v_src: TrajectorySource, traj_wsg_src: TrajectorySource, q0: np.ndarray):
     builder = DiagramBuilder() 
-    scenario = load_scenario(use_cubes=False)
+    scenario = load_scenario(use_cubes=False, use_position=True, q0=q0)
 
-    station = MakeHardwareStation(scenario)  
+    meshcat = StartMeshcat()
+    station: RobotDiagram = builder.AddSystem(MakeHardwareStation(scenario, meshcat))
     plant: MultibodyPlant = station.plant()
 
     context = station.CreateDefaultContext()
     plant_context = plant.GetMyContextFromRoot(context)
     iiwa = plant.GetModelInstanceByName('iiwa')
-    plant.SetPositions(plant_context, iiwa, q0)
+    plant.SetDefaultPositions(iiwa, q0)
+
+    wsg_source = builder.AddSystem(traj_wsg_src)
+    builder.Connect(wsg_source.get_output_port(), station.GetInputPort("wsg.position"))
 
     pinv_control: PseudoInverseController = builder.AddSystem(PseudoInverseController(plant))
-    integrator = builder.AddSystem(Integrator(7))
+    integrator: Integrator = builder.AddSystem(Integrator(7))
 
     builder.AddSystem(traj_v_src)
     builder.Connect(traj_v_src.get_output_port(), pinv_control.V_G_port)
-    builder.Connect(pinv_control.get_output_port(),
-                    integrator.get_input_port())
+    builder.Connect(station.GetOutputPort("iiwa_state"), pinv_control.q_port)
+    builder.Connect(pinv_control.get_output_port(), integrator.get_input_port())
+    builder.Connect(integrator.get_output_port(), station.GetInputPort("iiwa.position"))
+
+    builder.ExportOutput(pinv_control.get_output_port(), 'q_dot')
+    builder.ExportOutput(integrator.get_output_port(), 'q')
+    builder.ExportOutput(wsg_source.get_output_port(), 'wsg')
 
     diagram = builder.Build()
     sim = Simulator(diagram)
-    return sim, integrator.get_output_port(), pinv_control.get_output_port()
+    meshcat.StartRecording()
+    integrator.set_integral_value(integrator.GetMyContextFromRoot(sim.get_mutable_context()), q0)
+    return sim, meshcat
 
 class MetaController(LeafSystem):
     """
@@ -110,9 +124,9 @@ class MetaController(LeafSystem):
         # self.DeclareInitializationDiscreteUpdateEvent(self.UpdateTrajectory)
         self.DeclarePerStepDiscreteUpdateEvent(self.UpdateTrajectory)
 
-    def add_diagram(self, diagram: Diagram):
+    def add_diagram(self, diagram: Diagram, context: Context):
         self.diagram = diagram
-        self.context = diagram.CreateDefaultContext()
+        self.context = context
         self.plant_context = self.plant.GetMyContextFromRoot(self.context)
 
         # link camera
@@ -154,9 +168,18 @@ class MetaController(LeafSystem):
         if use_pinv:
             iiwa = self.plant.GetModelInstanceByName('iiwa')
             q0 = self.plant.GetPositions(self.plant_context, iiwa)
-            pinv_sim, q_port, q_dot_port = make_pinv_system(TrajectorySource(traj_deriv), q0)
+            print('traj', trajectory.value(0.3))
+            print('deriv', traj_deriv.value(0.3))
+
+            # q0 = np.array([1, 1, 1, 1, 1, 1, 1])
+            print(q0)
+            pinv_sim, meshcat = make_pinv_system(TrajectorySource(traj_deriv), 
+                                        TrajectorySource(wsg_trajectory), q0)
             sim_state = context.get_mutable_abstract_state(int(self._cur_pinv_simulator))
-            sim_state.set_value((pinv_sim, q_port, q_dot_port))
+            sim_state.set_value(pinv_sim)
+            pose = trajectory.GetPose(trajectory.end_time())
+            AddMeshcatTriad(meshcat, 'traj_end', X_PT=pose) 
+            self.sub_meshcat = meshcat
 
         print(values_vec)
         traj_length = trajectory.end_time()
@@ -198,19 +221,17 @@ class MetaController(LeafSystem):
             wsg_des = np.array([float(wsg_val)])
 
         else:
-            sim_state: tuple[Simulator, OutputPort, OutputPort] = context.get_abstract_state(int(self._cur_pinv_simulator)).get_value()
-            if sim_state is None:
+            sim = context.get_abstract_state(int(self._cur_pinv_simulator)).get_value()
+            if sim is None:
                 print('empty sim')
                 output.SetFromVector(np.zeros(15,))
                 return
 
-            sim, q_port, q_dot_port = sim_state
             sim.AdvanceTo(rel_time)
             context = sim.get_context()
-            q_des = q_port.Eval(context)
-            q_dot_des = q_dot_port.Eval(context)
-            wsg_val = trajectories.wsg.value(t_local).ravel()[0]
-            wsg_des = np.array([float(wsg_val)])
+            q_des = sim.get_system().GetOutputPort('q').Eval(context)
+            q_dot_des = sim.get_system().GetOutputPort('q_dot').Eval(context)
+            wsg_des = sim.get_system().GetOutputPort('wsg').Eval(context)
 
         output.SetFromVector(np.concat([q_des, q_dot_des, wsg_des]))
 

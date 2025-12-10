@@ -1,6 +1,8 @@
 from manipulation.station import LoadScenario
 from pathlib import Path
 import random
+import re
+import numpy as np
 
 def add_cubes(n, x_lower, x_upper, y_lower, y_upper):
     """
@@ -26,7 +28,16 @@ def add_cubes(n, x_lower, x_upper, y_lower, y_upper):
 """
     return cube_directives
 
-def load_scenario(use_cubes=True):
+def replace_starting_pose(scenario_string: str, q0: np.ndarray):
+    for i in range(7):
+        start = str(q0[i])
+        scenario_string = re.sub(f"iiwa_joint_{i+1}: \\[[\\d.]+\\]", 
+                                 f"iiwa_joint_{i+1}: [{start}]", 
+                                 scenario_string)
+    return scenario_string
+
+
+def load_scenario(use_cubes=True, use_position=False, q0=None):
     """
     Loads the scenario for the sweeper simulation.
     Should contain:
@@ -46,14 +57,16 @@ def load_scenario(use_cubes=True):
     if use_cubes:
         scenario_string += add_cubes(20, -1, +1, 0.5, 1)
     scenario_string += '\n' + camera_string
-#     scenario_string += """
-# model_drivers:
-#     iiwa: !IiwaDriver
-#       control_mode: position_only
-#       hand_model_name: wsg
-#     wsg: !SchunkWsgDriver {}
-# """
-    scenario_string += """
+    if use_position:
+        scenario_string += """
+model_drivers:
+    iiwa: !IiwaDriver
+        control_mode: position_only
+        hand_model_name: wsg
+    wsg: !SchunkWsgDriver {}
+    """
+    else:
+        scenario_string += """
 model_drivers:
     wsg: !SchunkWsgDriver {}
 """

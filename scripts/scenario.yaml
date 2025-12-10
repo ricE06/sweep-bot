@@ -14,7 +14,7 @@ directives:
     parent: world
     child: iiwa::iiwa_link_0
     X_PC:
-      translation: [0, 1.5, 0.0]   # offset robot (hole is at origin)
+      translation: [0, 1.6, 0.0]   # offset robot (hole is at origin)
       rotation: !Rpy { deg: [0, 0, 0] }
 # gripper
 - add_model:
@@ -40,7 +40,7 @@ directives:
     file: file://models/broom.sdf
     default_free_body_pose:
         handle_link:
-            translation: [0.6, 1.8, 0.0]
+            translation: [0.6, 1.4, 0.0]
             rotation: !Rpy { deg: [0, 0, 0] }
 # cameras
 - add_frame:

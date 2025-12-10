@@ -17,7 +17,7 @@ class PseudoInverseController(LeafSystem):
         self._W = plant.world_frame()
 
         self.V_G_port = self.DeclareVectorInputPort("V_WG", 6)
-        self.q_port = self.DeclareVectorInputPort("iiwa.position", 7)
+        self.q_port = self.DeclareVectorInputPort("iiwa.position", 14)
         self.DeclareVectorOutputPort("iiwa.velocity", 7, self.CalcOutput)
         self.iiwa_start = plant.GetJointByName("iiwa_joint_1").velocity_start()
         self.iiwa_end = plant.GetJointByName("iiwa_joint_7").velocity_start()
@@ -28,7 +28,7 @@ class PseudoInverseController(LeafSystem):
         """
         # evaluate the V_G_port and q_port on the current context to get those values.
         V_G = self.V_G_port.Eval(context)
-        q = self.q_port.Eval(context)
+        q = self.q_port.Eval(context)[:7]
 
         self._plant.SetPositions(self._plant_context, self._iiwa, q)
 

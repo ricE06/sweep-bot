@@ -14,8 +14,8 @@ X_handle_offset = RigidTransform(RollPitchYaw(0, 0, 0), np.array([0, 0, 0.2]))
 
 X_offset = X_Joint @ X_handle_offset
 
-GRIP_DIST = 0.01
-PREGRIP_DIST = 0.18
+GRIP_DIST = 0.1
+PREGRIP_DIST = 0.2
 
 # helper functions to compute broom related poses
 
