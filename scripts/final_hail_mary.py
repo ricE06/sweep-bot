@@ -30,17 +30,75 @@ from manipulation.scenarios import AddIiwa, AddWsg
 from .ik import solve_ik_for_pose
 from .utils import GripConstants
 
+def build_temp_plant(q0 = None, meshcat = None):
 
-def plan_sweep(plant: MultibodyPlant, plant_context: Context,
-               broom_frame,
-        X_WStart: RigidTransform, X_WGoal: RigidTransform,) -> tuple[Trajectory, Trajectory, bool]:
+    # BUILD NEW PLANT WITH EVERYTHING WELDED
+    builder = DiagramBuilder()
+    plant, scene_graph = AddMultibodyPlantSceneGraph(builder, time_step=0.001)
+    parser = Parser(plant)
+
+    # Add iiwa
+    # iiwa = parser.AddModelsFromUrl(
+    #     "package://drake_models/iiwa_description/urdf/iiwa14_primitive_collision.urdf")[0]
+    iiwa = AddIiwa(plant, collision_model="with_box_collision")
+
+    joint_name = 'world_welds_to_iiwa_link_0'
+    if plant.HasJointNamed(joint_name):
+        joint = plant.GetJointByName(joint_name)
+        plant.RemoveJoint(joint)
+    else:
+        print(f"Joint '{joint_name}' not found.")
+
+    plant.WeldFrames(
+        plant.world_frame(),
+        plant.GetFrameByName("iiwa_link_0", iiwa),
+        RigidTransform(RollPitchYaw(0, 0, 0), [0, 1.5, 0.0])
+    )
+
+    wsg = AddWsg(plant, iiwa, welded=True, sphere=True)
+
+    # Add table
+    table = parser.AddModels("./models/table_with_hole.sdf")[0]
+
+    plant.WeldFrames(
+        plant.world_frame(),
+        plant.GetFrameByName("hole_floor", table),
+        RigidTransform([0.0, 0.0, -0.55])
+    )
+
+    # Add broom
+    broom = parser.AddModels("./models/broom.sdf")[0]
+
+    plant.WeldFrames(
+        plant.GetFrameByName("body", wsg),
+        plant.GetFrameByName("handle_link", broom),
+        RigidTransform(RollPitchYaw(np.pi, 0, 0), np.array([0, 0.35, 0.52])),
+    )
+
+    broom_frame = plant.GetFrameByName("handle_link", broom)
+
+    # Finalize plant
+    plant.Finalize()
+    diagram = builder.Build()
+    diagram_context = diagram.CreateDefaultContext()
+    plant_context = plant.GetMyContextFromRoot(diagram_context)
+    if q0 is None:
+        q0 = plant.GetPositions(plant_context)
+    # plant.SetPositions(plant_context, iiwa, q0)
+
+    return diagram, plant, broom_frame
+
+def plan_sweep(broom_frame, q0,
+               X_WStart: RigidTransform, X_WGoal: RigidTransform,) -> Trajectory:
     """
     Returns joint space trajectory for grasping broom, avoiding collisions between
     iiwa, table, and broom (no gripper or cameras yet)
     """
+    diagram, plant, broom_frame = build_temp_plant(q0)
+    diagram_context = diagram.CreateDefaultContext()
+    plant_context = plant.GetMyContextFromRoot(diagram_context)
 
-    if q0 is None:
-        q0 = plant.GetPositions(plant_context)
+    q0 = plant.GetPositions(plant_context)
 
     nq = plant.num_positions()
     print(nq)
@@ -106,12 +164,12 @@ def plan_sweep(plant: MultibodyPlant, plant_context: Context,
 
     height_constraint = PositionConstraint(
         plant,
-        frameA=plant.world_frame(),
-        p_A_lower=np.array([-np.inf, -np.inf, -np.inf]),
-        p_A_upper=np.array([ np.inf,  np.inf, 0.05]),
-        frameB=broom_frame,
-        p_B=np.array([0, 0, 0]),
-        plant_context=plant_context
+        plant.world_frame(),
+        np.array([-np.inf, -np.inf, -np.inf]),
+        np.array([ np.inf,  np.inf, 0.05]),
+        broom_frame,
+        [0, 0, 0],
+        plant_context
     )
     for s in np.linspace(0, 1, 20):
         trajopt.AddPathPositionConstraint(height_constraint, s)
@@ -131,7 +189,7 @@ def plan_sweep(plant: MultibodyPlant, plant_context: Context,
         plant_context=plant_context
     )
 
-    trajopt.AddPathPositionConstraint(orientation_constraint, 1)
+    # trajopt.AddPathPositionConstraint(orientation_constraint, 1)
 
     # Start & end velocity = 0
     trajopt.AddPathVelocityConstraint(np.zeros((nq, 1)), np.zeros((nq, 1)), 0)
@@ -159,11 +217,8 @@ def plan_sweep(plant: MultibodyPlant, plant_context: Context,
         print(result.GetInfeasibleConstraintNames(prog))
 
     traj_V_G: Trajectory = trajopt.ReconstructTrajectory(result)
-    sample_times = [0, traj_V_G.end_time()]
-    finger_values = np.array([GripConstants.opened, GripConstants.opened]).reshape(1, -1)
-    traj_wsg_command = PiecewisePolynomial.FirstOrderHold(sample_times, finger_values)
 
-    return traj_V_G, traj_wsg_command, result.is_success()
+    return traj_V_G
 
 def straight_path(plant, q_current, X_WGoal):
     """
