@@ -37,7 +37,7 @@ def replace_starting_pose(scenario_string: str, q0: np.ndarray):
     return scenario_string
 
 
-def load_scenario(use_cubes=True, use_position=False, q0=None):
+def load_scenario(use_cubes=True, use_position=False, use_weld=False, q0=None):
     """
     Loads the scenario for the sweeper simulation.
     Should contain:
@@ -49,8 +49,12 @@ def load_scenario(use_cubes=True, use_position=False, q0=None):
     - cameras making point clouds for the broom and for the blocks
     Returns the Scenario object.
     """
-    with open('./scripts/scenario.yaml', 'r') as f:
-        scenario_string = f.read()
+    if use_weld:
+        with open('./scripts/scenario_welded_broom.yaml', 'r') as f:
+            scenario_string = f.read()
+    else:
+        with open('./scripts/scenario.yaml', 'r') as f:
+            scenario_string = f.read()
 
     with open('./scripts/camera.yaml', 'r') as f:
         camera_string = f.read()

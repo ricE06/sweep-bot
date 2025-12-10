@@ -90,8 +90,8 @@ class MetaController(LeafSystem):
     GRIP = 2
     PHASE_RETURN = 3
 
-    TRAJ_Q = 0
-    TRAJ_POSE = 1
+    TRAJ_POSE = 0
+    TRAJ_Q = 1
 
     diagram: Diagram = None
     context: Context = None
@@ -157,8 +157,8 @@ class MetaController(LeafSystem):
         if phase == self.START:
             print(f'called at time {time}')
             print('start!')
-            traj_gen = MoveToPregrip(self.meshcat)
-            values_vec.SetAtIndex(int(self._phase_idx), self.PREGRIP) # will be at pregrip once done
+            traj_gen = ManipulateBroom()
+            # values_vec.SetAtIndex(int(self._phase_idx), self.PREGRIP) # will be at pregrip once done
         elif phase == self.PREGRIP:
             traj_gen = PregripToGrip()
             print(f'called at time {time}')
@@ -174,8 +174,10 @@ class MetaController(LeafSystem):
         traj_state = context.get_mutable_abstract_state(int(self._cur_sweep_trajectory))
         traj_state.set_value(trajectories)
 
+        """
         visualizer: MeshcatVisualizer = self.diagram.GetSubsystemByName("meshcat_visualizer(illustration)")
         PublishPositionTrajectory(trajectory, self.context, self.plant, visualizer)
+        """
 
         if use_pinv:
             iiwa = self.plant.GetModelInstanceByName('iiwa')
