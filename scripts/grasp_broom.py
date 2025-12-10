@@ -29,7 +29,8 @@ from .utils import GripConstants
 
 def build_temp_plant(q0 = None, meshcat = None, broom_pose: RigidTransform | None = None):
     if broom_pose is None:
-        broom_pose = RigidTransform([0.6, 1.2, 0.025])
+        raise RuntimeError
+    print('broom pose', broom_pose)
 
     # BUILD NEW PLANT WITH EVERYTHING WELDED
     builder = DiagramBuilder()
@@ -51,7 +52,7 @@ def build_temp_plant(q0 = None, meshcat = None, broom_pose: RigidTransform | Non
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("iiwa_link_0", iiwa),
-        RigidTransform(RollPitchYaw(0, 0, 0), [0, 1.5, 0.0])
+        RigidTransform(RollPitchYaw(0, 0, 0), [0, 2.1, 0.0])
     )
 
     wsg = AddWsg(plant, iiwa, welded=True, sphere=True)
@@ -71,7 +72,7 @@ def build_temp_plant(q0 = None, meshcat = None, broom_pose: RigidTransform | Non
 
     plant.WeldFrames(
         plant.world_frame(),
-        plant.GetFrameByName("base_link", broom),
+        plant.GetFrameByName("handle_link", broom),
         broom_pose,
     )
 
@@ -93,14 +94,14 @@ def build_temp_plant(q0 = None, meshcat = None, broom_pose: RigidTransform | Non
 def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
               q0 = None,
               hold_orientation: bool = False,
-              broom_pose: RigidTransform|None = None) -> tuple[Trajectory, Trajectory]:
+              broom_pose: RigidTransform|None = None) -> tuple[Trajectory, Trajectory, bool]:
     """
     Returns joint space trajectory for grasping broom, avoiding collisions between
     iiwa, table, and broom (no gripper or cameras yet)
 
     """
 
-    diagram, plant, gripper_frame = build_temp_plant(q0, broom_pose)
+    diagram, plant, gripper_frame = build_temp_plant(q0, broom_pose=broom_pose)
     print(plant)
     diagram_context = diagram.CreateDefaultContext()
     plant_context = plant.GetMyContextFromRoot(diagram_context)
@@ -142,12 +143,15 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
         plant.GetVelocityUpperLimits()
     )
 
+    pos_tol = np.array([0.01, 0.01, 0.01])
+    pos_tol = np.array([0, 0, 0])
+
     # START constraint
     start_constraint = PositionConstraint(
         plant,
         plant.world_frame(),
-        X_WStart.translation(),
-        X_WStart.translation(),
+        X_WStart.translation() - pos_tol,
+        X_WStart.translation() + pos_tol,
         gripper_frame,
         [0, 0, 0],
         plant_context
@@ -160,8 +164,8 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
     goal_constraint = PositionConstraint(
         plant,
         plant.world_frame(),
-        X_WGoal.translation(),
-        X_WGoal.translation(),
+        X_WGoal.translation() - pos_tol,
+        X_WGoal.translation() + pos_tol,
         gripper_frame,
         [0, 0, 0],
         plant_context
@@ -206,14 +210,16 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
 
     result = Solve(prog)
     if not result.is_success():
-        print("Collision optimization failed")
+        print('Solver failed')
+        # print(result.get_solver_details().__dict__)
+        print(result.GetInfeasibleConstraintNames(prog))
 
     traj_V_G: Trajectory = trajopt.ReconstructTrajectory(result)
     sample_times = [0, traj_V_G.end_time()]
     finger_values = np.array([GripConstants.opened, GripConstants.opened]).reshape(1, -1)
     traj_wsg_command = PiecewisePolynomial.FirstOrderHold(sample_times, finger_values)
 
-    return traj_V_G, traj_wsg_command
+    return traj_V_G, traj_wsg_command, result.is_success()
 
 def straight_path(plant, q_current, X_WGoal):
     """

@@ -1,3 +1,5 @@
+dd:w
+
 directives:
 - add_model:
     name: iiwa
@@ -14,7 +16,7 @@ directives:
     parent: world
     child: iiwa::iiwa_link_0
     X_PC:
-      translation: [0, 2.1, 0.0]   # offset robot (hole is at origin)
+      translation: [0, 1.8, 0.0]   # offset robot (hole is at origin)
       rotation: !Rpy { deg: [0, 0, 0] }
 # gripper
 - add_model:

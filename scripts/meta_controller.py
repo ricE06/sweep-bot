@@ -12,9 +12,11 @@ from pydrake.all import (
         Diagram,
         InputPort,
         Integrator,
-        OutputPort,
-        MultibodyPlant,
         LeafSystem,
+        Meshcat,
+        MeshcatVisualizer,
+        MultibodyPlant,
+        OutputPort,
         RigidTransform,
         RobotDiagram,
         Simulator,
@@ -23,10 +25,16 @@ from pydrake.all import (
         TrajectorySource,
 )
 from manipulation.station import MakeHardwareStation
-from manipulation.meshcat_utils import AddMeshcatTriad
+from manipulation.meshcat_utils import AddMeshcatTriad, PublishPositionTrajectory
 
 from .point_cloud import get_point_cloud
-from .trajectory_helpers import TrajectoryGenerator, MoveToPregrip, PregripToGrip, ManipulateBroom
+from .trajectory_helpers import (
+        TrajectoryGenerator, 
+        MoveToPregrip, 
+        PregripToGrip, 
+        ManipulateBroom,
+        get_broom_pregrip,
+        )
 from .diff_ik import PseudoInverseController
 from .load_scenario import load_scenario
 
@@ -124,9 +132,10 @@ class MetaController(LeafSystem):
         # self.DeclareInitializationDiscreteUpdateEvent(self.UpdateTrajectory)
         self.DeclarePerStepDiscreteUpdateEvent(self.UpdateTrajectory)
 
-    def add_diagram(self, diagram: Diagram, context: Context):
+    def add_diagram(self, diagram: Diagram, context: Context, meshcat: Meshcat):
         self.diagram = diagram
         self.context = context
+        self.meshcat = meshcat
         self.plant_context = self.plant.GetMyContextFromRoot(self.context)
 
         # link camera
@@ -148,7 +157,7 @@ class MetaController(LeafSystem):
         if phase == self.START:
             print(f'called at time {time}')
             print('start!')
-            traj_gen = MoveToPregrip()
+            traj_gen = MoveToPregrip(self.meshcat)
             values_vec.SetAtIndex(int(self._phase_idx), self.PREGRIP) # will be at pregrip once done
         elif phase == self.PREGRIP:
             traj_gen = PregripToGrip()
@@ -164,6 +173,9 @@ class MetaController(LeafSystem):
         trajectories = Trajectories(trajectory, traj_deriv, wsg_trajectory)
         traj_state = context.get_mutable_abstract_state(int(self._cur_sweep_trajectory))
         traj_state.set_value(trajectories)
+
+        visualizer: MeshcatVisualizer = self.diagram.GetSubsystemByName("meshcat_visualizer(illustration)")
+        PublishPositionTrajectory(trajectory, self.context, self.plant, visualizer)
 
         if use_pinv:
             iiwa = self.plant.GetModelInstanceByName('iiwa')

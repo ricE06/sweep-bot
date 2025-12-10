@@ -170,6 +170,11 @@ class Return(TrajectoryGenerator):
 
 class MoveToPregrip(TrajectoryGenerator):
 
+    def __init__(self, meshcat):
+        self.meshcat = meshcat
+
+    num_retries = 1
+
     def trajectory(self, controller: MetaController):
         broom_pose = get_broom_pose(controller)
         robot_pos = get_robot_pose(controller).translation()
@@ -179,7 +184,16 @@ class MoveToPregrip(TrajectoryGenerator):
 
         X_current = get_gripper_pose(controller)
 
-        traj_gripper, traj_wsg = plan_path(X_current, pregrip, hold_orientation=True, broom_pose=broom_pose)
+        success = False
+        attempts = 0
+        while not success and attempts < self.num_retries:
+            AddMeshcatTriad(self.meshcat, f'trajopt-{attempts}', X_PT=pregrip)
+            print('trying angle', angle)
+            traj_gripper, traj_wsg, success = plan_path(X_current, pregrip, hold_orientation=True, broom_pose=broom_pose)
+            attempts += 1
+            angle += np.random.uniform(-0.1, 0.1)
+
+        print('attempts needed:', attempts)
 
         return traj_gripper, traj_wsg
 
