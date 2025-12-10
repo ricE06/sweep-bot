@@ -89,7 +89,7 @@ def build_temp_plant(q0 = None, meshcat = None):
     return diagram, plant, broom_frame
 
 def plan_sweep(broom_frame, q0,
-               X_WStart: RigidTransform, X_WGoal: RigidTransform,) -> Trajectory:
+               X_WStart: RigidTransform, X_WGoal: RigidTransform) -> Trajectory:
     """
     Returns joint space trajectory for grasping broom, avoiding collisions between
     iiwa, table, and broom (no gripper or cameras yet)
@@ -115,7 +115,6 @@ def plan_sweep(broom_frame, q0,
     # print(trajopt.num_control_points())
     path_guess = BsplineTrajectory(trajopt.basis(), q_guess)
     trajopt.SetInitialGuess(path_guess)
-
 
     trajopt.AddDurationCost(1.0)
     trajopt.AddPathLengthCost(1.0)
