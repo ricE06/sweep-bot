@@ -66,7 +66,7 @@ def load_scenario(use_cubes=True, use_position=False, use_weld=False, q0=None):
 model_drivers:
     iiwa: !IiwaDriver
         control_mode: position_only
-        hand_model_name: wsg
+        hand_model_name: broom
     wsg: !SchunkWsgDriver {}
     """
     else:

@@ -4,6 +4,7 @@ import numpy as np
 from pydrake.all import (
         AbstractValue,
         BasicVector,
+        ConstantVectorSource,
         Context,
         DerivativeTrajectory,
         DiagramBuilder,
@@ -30,7 +31,7 @@ from manipulation.meshcat_utils import AddMeshcatTriad, PublishPositionTrajector
 from .point_cloud import get_point_cloud
 from .trajectory_helpers import (
         TrajectoryGenerator, 
-        MoveToPregrip, 
+        MoveToStart, 
         PregripToGrip, 
         ManipulateBroom,
         get_broom_pregrip,
@@ -42,11 +43,10 @@ from .load_scenario import load_scenario
 class Trajectories:
     gripper_pos: Trajectory
     gripper_vel: Trajectory
-    wsg: Trajectory
 
-def make_pinv_system(traj_v_src: TrajectorySource, traj_wsg_src: TrajectorySource, q0: np.ndarray):
+def make_pinv_system(traj_v_src: TrajectorySource, q0: np.ndarray):
     builder = DiagramBuilder() 
-    scenario = load_scenario(use_cubes=False, use_position=True, q0=q0)
+    scenario = load_scenario(use_cubes=False, use_position=True, use_weld=True, q0=q0)
 
     meshcat = StartMeshcat()
     station: RobotDiagram = builder.AddSystem(MakeHardwareStation(scenario, meshcat))
@@ -57,7 +57,7 @@ def make_pinv_system(traj_v_src: TrajectorySource, traj_wsg_src: TrajectorySourc
     iiwa = plant.GetModelInstanceByName('iiwa')
     plant.SetDefaultPositions(iiwa, q0)
 
-    wsg_source = builder.AddSystem(traj_wsg_src)
+    wsg_source = builder.AddSystem(ConstantVectorSource([0.5]))
     builder.Connect(wsg_source.get_output_port(), station.GetInputPort("wsg.position"))
 
     pinv_control: PseudoInverseController = builder.AddSystem(PseudoInverseController(plant))
@@ -71,7 +71,6 @@ def make_pinv_system(traj_v_src: TrajectorySource, traj_wsg_src: TrajectorySourc
 
     builder.ExportOutput(pinv_control.get_output_port(), 'q_dot')
     builder.ExportOutput(integrator.get_output_port(), 'q')
-    builder.ExportOutput(wsg_source.get_output_port(), 'wsg')
 
     diagram = builder.Build()
     sim = Simulator(diagram)
@@ -86,12 +85,12 @@ class MetaController(LeafSystem):
     """
 
     START = 0
-    PREGRIP = 1
+    PRESWEEP = 1
     GRIP = 2
     PHASE_RETURN = 3
 
-    TRAJ_POSE = 0
-    TRAJ_Q = 1
+    TRAJ_Q = 0
+    TRAJ_POSE = 1
 
     diagram: Diagram = None
     context: Context = None
@@ -122,10 +121,10 @@ class MetaController(LeafSystem):
         self._cur_sweep_trajectory = self.DeclareAbstractState(AbstractValue.Make(None))
         self._cur_pinv_simulator = self.DeclareAbstractState(AbstractValue.Make(None))
 
-        # Concatenate joint positions, velocities and wsg to be fed into Demultiplexer
+        # Concatenate joint positions, velocities to be fed into Demultiplexer
         self.DeclareVectorOutputPort(
             "position_and_wsg",
-            BasicVector(2*self._nq + 1),
+            BasicVector(2*self._nq),
             self.CalcSysOutput
         )
 
@@ -157,20 +156,20 @@ class MetaController(LeafSystem):
         if phase == self.START:
             print(f'called at time {time}')
             print('start!')
+            traj_gen = MoveToStart()
+            values_vec.SetAtIndex(int(self._phase_idx), self.PRESWEEP) # will be at presweep once done
+        elif phase == self.PRESWEEP:
             traj_gen = ManipulateBroom()
-            # values_vec.SetAtIndex(int(self._phase_idx), self.PREGRIP) # will be at pregrip once done
-        elif phase == self.PREGRIP:
-            traj_gen = PregripToGrip()
             print(f'called at time {time}')
-            print('moved to pregrip!')
+            print('moved to sweep!')
             use_pinv = True
             # from gripper vel -> joint ang
         elif phase == self.GRIP:
             pass
 
-        trajectory, wsg_trajectory = traj_gen.trajectory(self)
+        trajectory = traj_gen.trajectory(self)
         traj_deriv = trajectory.MakeDerivative(1)
-        trajectories = Trajectories(trajectory, traj_deriv, wsg_trajectory)
+        trajectories = Trajectories(trajectory, traj_deriv)
         traj_state = context.get_mutable_abstract_state(int(self._cur_sweep_trajectory))
         traj_state.set_value(trajectories)
 
@@ -187,8 +186,7 @@ class MetaController(LeafSystem):
 
             # q0 = np.array([1, 1, 1, 1, 1, 1, 1])
             print(q0)
-            pinv_sim, meshcat = make_pinv_system(TrajectorySource(traj_deriv), 
-                                        TrajectorySource(wsg_trajectory), q0)
+            pinv_sim, meshcat = make_pinv_system(TrajectorySource(traj_deriv), q0)
             sim_state = context.get_mutable_abstract_state(int(self._cur_pinv_simulator))
             sim_state.set_value(pinv_sim)
             pose = trajectory.GetPose(trajectory.end_time())
@@ -220,7 +218,7 @@ class MetaController(LeafSystem):
         if trajectories is None:
             # has not initialized yet
             print(f'empty trajectories at time {time}')
-            output.SetFromVector(np.zeros(15,))
+            output.SetFromVector(np.zeros(14,))
             return
 
         if traj_mode == self.TRAJ_Q:
@@ -230,24 +228,22 @@ class MetaController(LeafSystem):
 
             # don't ask
             q_des = np.array(pos.value(t_local).ravel()).reshape(1, -1).reshape(7,)
+            # print(q_des)
             q_dot_des = np.array(vel.value(t_local).ravel()).reshape(1, -1).reshape(7,)
-            wsg_val = trajectories.wsg.value(t_local).ravel()[0]
-            wsg_des = np.array([float(wsg_val)])
 
         else:
             sim = context.get_abstract_state(int(self._cur_pinv_simulator)).get_value()
             if sim is None:
                 print('empty sim')
-                output.SetFromVector(np.zeros(15,))
+                output.SetFromVector(np.zeros(14,))
                 return
 
             sim.AdvanceTo(rel_time)
             context = sim.get_context()
             q_des = sim.get_system().GetOutputPort('q').Eval(context)
             q_dot_des = sim.get_system().GetOutputPort('q_dot').Eval(context)
-            wsg_des = sim.get_system().GetOutputPort('wsg').Eval(context)
 
-        output.SetFromVector(np.concat([q_des, q_dot_des, wsg_des]))
+        output.SetFromVector(np.concat([q_des, q_dot_des]))
 
     #UPDATE LOOP (state machine)
     def DoUpdate(self, context, state):

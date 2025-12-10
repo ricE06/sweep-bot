@@ -27,10 +27,7 @@ from .ik import solve_ik_for_pose
 from .utils import GripConstants
 
 
-def build_temp_plant(q0 = None, meshcat = None, broom_pose: RigidTransform | None = None):
-    if broom_pose is None:
-        raise RuntimeError
-    print('broom pose', broom_pose)
+def build_temp_plant(q0 = None, meshcat = None):
 
     # BUILD NEW PLANT WITH EVERYTHING WELDED
     builder = DiagramBuilder()
@@ -52,7 +49,7 @@ def build_temp_plant(q0 = None, meshcat = None, broom_pose: RigidTransform | Non
     plant.WeldFrames(
         plant.world_frame(),
         plant.GetFrameByName("iiwa_link_0", iiwa),
-        RigidTransform(RollPitchYaw(0, 0, 0), [0, 2.1, 0.0])
+        RigidTransform(RollPitchYaw(0, 0, 0), [0, 1.6, 0.0])
     )
 
     wsg = AddWsg(plant, iiwa, welded=True, sphere=True)
@@ -71,13 +68,12 @@ def build_temp_plant(q0 = None, meshcat = None, broom_pose: RigidTransform | Non
 
 
     plant.WeldFrames(
-        plant.world_frame(),
+        plant.GetFrameByName("body", wsg),
         plant.GetFrameByName("handle_link", broom),
-        broom_pose,
+        RigidTransform(RollPitchYaw(np.pi, 0, 0), np.array([0, 0.35, 0.52])),
     )
 
-
-    gripper_frame = plant.GetFrameByName("body", wsg)
+    broom_frame = plant.GetFrameByName("handle_link", broom)
 
     # Finalize plant
     plant.Finalize()
@@ -88,20 +84,18 @@ def build_temp_plant(q0 = None, meshcat = None, broom_pose: RigidTransform | Non
         q0 = plant.GetPositions(plant_context)
     # plant.SetPositions(plant_context, iiwa, q0)
 
-    return diagram, plant, gripper_frame
+    return diagram, plant, broom_frame
 
 
 def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
               q0 = None,
-              hold_orientation: bool = False,
-              broom_pose: RigidTransform|None = None) -> tuple[Trajectory, Trajectory, bool]:
+              hold_orientation: bool = False) -> tuple[Trajectory, Trajectory, bool]:
     """
     Returns joint space trajectory for grasping broom, avoiding collisions between
     iiwa, table, and broom (no gripper or cameras yet)
-
     """
 
-    diagram, plant, gripper_frame = build_temp_plant(q0, broom_pose=broom_pose)
+    diagram, plant, broom_frame = build_temp_plant(q0)
     print(plant)
     diagram_context = diagram.CreateDefaultContext()
     plant_context = plant.GetMyContextFromRoot(diagram_context)
@@ -152,7 +146,7 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
         plant.world_frame(),
         X_WStart.translation() - pos_tol,
         X_WStart.translation() + pos_tol,
-        gripper_frame,
+        broom_frame,
         [0, 0, 0],
         plant_context
     )
@@ -166,7 +160,7 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
         plant.world_frame(),
         X_WGoal.translation() - pos_tol,
         X_WGoal.translation() + pos_tol,
-        gripper_frame,
+        broom_frame,
         [0, 0, 0],
         plant_context
     )
@@ -179,7 +173,7 @@ def plan_path(X_WStart: RigidTransform, X_WGoal: RigidTransform,
 
     orientation_constraint = OrientationConstraint(
         plant=plant,
-        frameAbar=gripper_frame,
+        frameAbar=broom_frame,
         R_AbarA=RotationMatrix(),
         frameBbar=plant.world_frame(),
         R_BbarB=R_WG_goal,
